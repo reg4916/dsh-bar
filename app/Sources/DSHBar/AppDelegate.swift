@@ -3,20 +3,33 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let popover = NSPopover()
-    private var timer: Timer?
+    private let client = BarClient()
+
+    private var frameTimer: Timer?
+    private var pollTimer: Timer?
     private var frame = 0
-    private var tick = 0
-    private var stateIndex = 0
+    private var demo = false
+    private var demoIndex = 0
+    private var demoSnapshot = BarSnapshot.demo[0]
     private var snapshot = BarSnapshot.demo[0]
+    private var connected = false
+    private var inflight = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        demo = ProcessInfo.processInfo.environment["DSH_BAR_DEMO"] == "1"
         configureStatusItem()
         configurePopover()
-        startTimer()
+        startFrameTimer()
+        if demo {
+            startDemoTimer()
+        } else {
+            startPolling()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        timer?.invalidate()
+        frameTimer?.invalidate()
+        pollTimer?.invalidate()
     }
 
     private func configureStatusItem() {
@@ -40,27 +53,75 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         })
     }
 
-    private func startTimer() {
+    private func startFrameTimer() {
         let timer = Timer(timeInterval: 1.0 / 12.0, repeats: true) { [weak self] _ in
             self?.onFrame()
         }
         RunLoop.main.add(timer, forMode: .common)
-        self.timer = timer
+        frameTimer = timer
+    }
+
+    private func startPolling() {
+        poll()
+        let timer = Timer(timeInterval: 0.8, repeats: true) { [weak self] _ in
+            self?.poll()
+        }
+        timer.tolerance = 0.2
+        RunLoop.main.add(timer, forMode: .common)
+        pollTimer = timer
+    }
+
+    private func startDemoTimer() {
+        let timer = Timer(timeInterval: 2.5, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            demoIndex = (demoIndex + 1) % BarSnapshot.demo.count
+            demoSnapshot = BarSnapshot.demo[demoIndex]
+            apply(demoSnapshot, connected: true)
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        pollTimer = timer
+    }
+
+    private func poll() {
+        guard !inflight else { return }
+        inflight = true
+        client.poll { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.inflight = false
+                switch result {
+                case .success(let next):
+                    self.apply(next, connected: true)
+                case .failure(let error):
+                    self.apply(BarSnapshot(state: .idle, title: "DSH is not running", detail: String(describing: error), model: "", tokens: 0, cost: "—", approvals: 0), connected: false)
+                }
+            }
+        }
+    }
+
+    private func apply(_ next: BarSnapshot, connected: Bool) {
+        self.connected = connected
+        let changed = next.state != snapshot.state || next.title != snapshot.title || next.detail != snapshot.detail
+        snapshot = next
+        if changed {
+            (popover.contentViewController as? StatusViewController)?.update(snapshot)
+        }
+        statusItem.button?.appearsDisabled = !connected
+        redraw(force: changed)
+        updateBadge()
     }
 
     private func onFrame() {
-        tick += 1
         frame += 1
+        redraw(force: false)
+    }
 
-        // M1 demo sequencer: advance every 2.5 s so every state is visible.
-        if tick % 30 == 0 {
-            stateIndex = (stateIndex + 1) % BarSnapshot.demo.count
-            snapshot = BarSnapshot.demo[stateIndex]
-            (popover.contentViewController as? StatusViewController)?.update(snapshot)
+    private func redraw(force: Bool) {
+        guard let button = statusItem.button else { return }
+        // Animate only while the agent is busy; a still icon costs nothing.
+        if snapshot.state.animates || force || frame % 12 == 0 {
+            button.image = WhaleIcon.image(frame: frame, state: snapshot.state)
         }
-
-        statusItem.button?.image = WhaleIcon.image(frame: frame, state: snapshot.state)
-        updateBadge()
     }
 
     private func updateBadge() {
@@ -105,6 +166,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openDSH() {
+        if let app = NSRunningApplication.runningApplications(withBundleIdentifier: "com.deepseek.dsh").first {
+            app.activate(options: [.activateIgnoringOtherApps])
+            return
+        }
         let raw = ProcessInfo.processInfo.environment["DSH_BAR_URL"] ?? "http://127.0.0.1:49399"
         if let url = URL(string: raw) {
             NSWorkspace.shared.open(url)
@@ -116,8 +181,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// Minimal popover content for M1. M2 replaces the hard-coded fields with the
-/// live snapshot stream from the host plugin.
+/// Popover content. M2 shows the live snapshot; approvals and actions land in M3.
 final class StatusViewController: NSViewController {
     private var snapshot: BarSnapshot
     private let titleLabel = NSTextField(labelWithString: "")

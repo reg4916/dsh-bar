@@ -1,0 +1,4 @@
+# dsh bundle patch: inserts the DSH Bar host plugin into a profile's layer stack.
+- insert:
+    - id: dsh-bar
+      name: dsh-bar
