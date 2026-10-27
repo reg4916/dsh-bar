@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  plugin:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    defaults:
+      run:
+        working-directory: plugin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm install --no-audit --no-fund
+      - run: npm test
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build universal app
+        run: ./scripts/build.sh --universal
+      - name: Verify architectures and signature
+        run: |
+          lipo -info build/DSHBar.app/Contents/MacOS/DSHBar
+          codesign -dv build/DSHBar.app 2>&1 | head -5
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DSHBar-universal
+          path: build/DSHBar.app
+
