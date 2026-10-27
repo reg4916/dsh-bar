@@ -145,10 +145,15 @@ export class Board {
     for (const session of sessions) {
       const row = this.row(session.id);
       const state = this.stateFor(session, row);
-      const usage = this.projection(session, "tokenUsage") ?? {};
+      const usageRaw = this.projection(session, "tokenUsage") ?? {};
+      // 0.2.1 projection shape: { totals: {...}, last: {...} } — older builds
+      // returned the bucket fields flat, so accept both.
+      const usage = usageRaw.totals ?? usageRaw;
       const selection = this.projection(session, "modelSelection");
       const pressure = this.projection(session, "contextPressure") ?? {};
-      const tokens = (usage.uncachedInputTokens ?? 0) + (usage.outputTokens ?? 0) + (usage.cacheReadTokens ?? 0);
+      // Cache reads stay out of the headline number: they are real usage, but
+      // tens of millions of cached tokens read as nonsense in a menu bar.
+      const tokens = (usage.uncachedInputTokens ?? 0) + (usage.outputTokens ?? 0);
       const child = session.header?.origin === "subagent";
       if (child) continue; // children roll up into the root row
       rows.push({
@@ -160,7 +165,7 @@ export class Board {
         detail: this.detailFor(state, row),
         model: selection?.lastUsed?.model ?? row.model ?? "",
         tokens,
-        usage,
+        usage: usageRaw,
         context: { pressureTokens: pressure.pressureTokens, projectedTokens: pressure.projectedTokens, contextWindow: pressure.contextWindow },
         lastTurn: row.lastTurn,
         startedAt: row.startedAt,

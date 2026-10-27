@@ -83,3 +83,25 @@ test("focus wish validates the session and expires", () => {
   board.focus.at = Date.now() - 61_000;
   assert.equal(board.peekFocus(), null);
 });
+
+test("token totals come from the nested projection shape", () => {
+  const ctx = fakeCtx([session("s1")]);
+  ctx.get = (name) => {
+    if (name === "sessionProjections") {
+      return {
+        stateOf: (_session, key) => {
+          if (key === "tokenUsage") {
+            return { totals: { uncachedInputTokens: 388200, outputTokens: 308259, cacheReadTokens: 94_000_000 }, last: {} };
+          }
+          return undefined;
+        },
+      };
+    }
+    return undefined;
+  };
+  const board = new Board(ctx, "srv");
+  board.origin = "http://127.0.0.1:1";
+  const snap = board.snapshot();
+  assert.equal(snap.active.tokens, 696459);
+  assert.equal(snap.active.usage.totals.uncachedInputTokens, 388200);
+});
