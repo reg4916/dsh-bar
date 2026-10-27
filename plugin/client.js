@@ -38,7 +38,8 @@ window.__ModuleLoader__.load({
 			if (focus.at <= lastFocusAt) return;
 			lastFocusAt = focus.at;
 			try {
-				ctx.uiWorkspace?.openSession?.(focus.sessionId);
+				const workspace = ctx.get?.("uiWorkspace") ?? ctx.uiWorkspace;
+				workspace?.openSession?.(focus.sessionId);
 				window.focus();
 			} catch {
 				/* the session may have been disposed in the meantime */
@@ -46,7 +47,9 @@ window.__ModuleLoader__.load({
 		}
 
 		return {
-			inject: ["@deepseek-ai/dsh-client-ui-workspace"],
+			// Deliberately no inject list: waiting for a service that the shell
+			// does not expose would block the whole web boot. The workspace
+			// service is resolved lazily when a focus wish actually arrives.
 			apply(ctx) {
 				ctx.effect(() => {
 					const timer = setInterval(() => poll(ctx), POLL_MS);
