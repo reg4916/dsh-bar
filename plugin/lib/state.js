@@ -1,10 +1,11 @@
 /**
- * Incremental state fold for the menu bar.
+ * Incremental state fold + approval/question holding for the menu bar.
  *
  * Deliberately NOT session.snapshotEvents(): that API is deprecated in 0.2.1.
- * We listen to ctx.on('session/event') and keep only the few fields the icon
- * needs, bounded per session.
+ * We listen to ctx.on('session/event') and keep only the fields the icon needs.
  */
+import { randomUUID } from "node:crypto";
+
 const FAILED_KINDS = new Set(["error", "blocked", "max-tokens"]);
 const DONE_TTL_MS = 6_000;
 
@@ -15,8 +16,7 @@ export class Board {
     this.ctx = ctx;
     this.serverId = serverId;
     this.fold = new Map();
-    this.heldApprovals = new Map();
-    this.heldAsks = new Map();
+    this.pending = new Map();
     this.focus = undefined;
     this.revision = 0;
   }
@@ -39,6 +39,9 @@ export class Board {
 
   forget(sessionId) {
     this.fold.delete(sessionId);
+    for (const [id, held] of this.pending) {
+      if (held.sessionId === sessionId) this.pending.delete(id);
+    }
   }
 
   onSessionEvent(session, event) {
@@ -84,16 +87,125 @@ export class Board {
     row.lastError = { at: Date.now(), message: message.slice(0, 200) };
   }
 
+  isChild(sessionId) {
+    try {
+      const session = this.ctx.sessions?.get?.(sessionId);
+      return session?.header?.origin === "subagent";
+    } catch {
+      return false;
+    }
+  }
+
+  /** Hold a tool approval so the menu bar can answer it. Child sessions are
+   *  skipped: background subagents raise sandbox escalations that are not the
+   *  user's decision and would turn the icon red for no reason. */
+  holdApproval(request, next) {
+    const sessionId = String(request?.agent?.id ?? "");
+    if (!sessionId || this.isChild(sessionId)) return next();
+    const id = randomUUID();
+    const held = new Promise((resolve) => {
+      this.pending.set(id, {
+        kind: "approval",
+        id,
+        sessionId,
+        title: this.titleOfId(sessionId),
+        toolName: String(request.toolName ?? "tool"),
+        reason: request.reason,
+        resolve,
+        at: Date.now(),
+      });
+      this.revision += 1;
+      request.signal?.addEventListener("abort", () => {
+        if (this.pending.delete(id)) this.revision += 1;
+      }, { once: true });
+    });
+    return Promise.race([held, next()]).finally(() => {
+      if (this.pending.delete(id)) this.revision += 1;
+    });
+  }
+
+  /** Hold an AskUserQuestion request. The delegated wait owns its own abort
+   *  controller: the losing Web answerer must be cancelled, or its interaction
+   *  stays mounted forever. */
+  holdAsk(request, next) {
+    const sessionId = String(request?.agent?.id ?? "");
+    if (!sessionId) return next();
+    const originalSignal = request.signal;
+    const downstream = new AbortController();
+    request.signal = originalSignal
+      ? AbortSignal.any([originalSignal, downstream.signal])
+      : downstream.signal;
+    const id = randomUUID();
+    const questions = (request.questions ?? []).map((item) => ({
+      id: item.id,
+      question: item.question,
+      detail: item.detail,
+      header: item.header,
+      options: item.options,
+      multiSelect: item.multiSelect,
+    }));
+    const held = new Promise((resolve) => {
+      this.pending.set(id, {
+        kind: "ask",
+        id,
+        sessionId,
+        title: this.titleOfId(sessionId),
+        questions,
+        resolve,
+        at: Date.now(),
+      });
+      this.revision += 1;
+      request.signal?.addEventListener("abort", () => {
+        if (this.pending.delete(id)) this.revision += 1;
+      }, { once: true });
+    });
+    return Promise.race([held, Promise.resolve().then(next)]).finally(() => {
+      downstream.abort(new Error("Question settled through another answerer"));
+      if (originalSignal === undefined) delete request.signal;
+      else request.signal = originalSignal;
+      if (this.pending.delete(id)) this.revision += 1;
+    });
+  }
+
+  decideApproval(id, outcome) {
+    const held = this.pending.get(id);
+    if (!held || held.kind !== "approval") return false;
+    this.pending.delete(id);
+    this.revision += 1;
+    held.resolve(outcome);
+    return true;
+  }
+
+  answerAsk(id, answers) {
+    const held = this.pending.get(id);
+    if (!held || held.kind !== "ask") return false;
+    this.pending.delete(id);
+    this.revision += 1;
+    held.resolve({ answers });
+    return true;
+  }
+
+  stop(sessionId) {
+    try {
+      const agent = this.ctx.agents?.get?.(sessionId);
+      if (!agent || typeof agent.cancel !== "function") return false;
+      agent.cancel({ kind: "user" }, { keepInbox: true });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   heldApproval(sessionId) {
-    for (const held of this.heldApprovals.values()) {
-      if (held.sessionId === sessionId) return held;
+    for (const held of this.pending.values()) {
+      if (held.kind === "approval" && held.sessionId === sessionId) return held;
     }
     return undefined;
   }
 
   heldAsk(sessionId) {
-    for (const held of this.heldAsks.values()) {
-      if (held.sessionId === sessionId) return held;
+    for (const held of this.pending.values()) {
+      if (held.kind === "ask" && held.sessionId === sessionId) return held;
     }
     return undefined;
   }
@@ -121,6 +233,16 @@ export class Board {
     }
   }
 
+  titleOfId(sessionId) {
+    try {
+      const session = this.ctx.sessions?.get?.(sessionId);
+      if (session) return this.titleOf(session);
+    } catch {
+      /* optional service */
+    }
+    return String(sessionId).slice(0, 8);
+  }
+
   titleOf(session) {
     try {
       const title = this.ctx.get?.("sessionTitle")?.get?.(session)?.title;
@@ -146,16 +268,16 @@ export class Board {
       const row = this.row(session.id);
       const state = this.stateFor(session, row);
       const usageRaw = this.projection(session, "tokenUsage") ?? {};
-      // 0.2.1 projection shape: { totals: {...}, last: {...} } — older builds
-      // returned the bucket fields flat, so accept both.
+      // 0.2.1 projection shape: { totals: {...}, last: {...} }.
       const usage = usageRaw.totals ?? usageRaw;
       const selection = this.projection(session, "modelSelection");
       const pressure = this.projection(session, "contextPressure") ?? {};
       // Cache reads stay out of the headline number: they are real usage, but
       // tens of millions of cached tokens read as nonsense in a menu bar.
       const tokens = (usage.uncachedInputTokens ?? 0) + (usage.outputTokens ?? 0);
-      const child = session.header?.origin === "subagent";
-      if (child) continue; // children roll up into the root row
+      if (session.header?.origin === "subagent") continue;
+      const approval = this.heldApproval(session.id);
+      const ask = this.heldAsk(session.id);
       rows.push({
         id: session.id,
         title: this.titleOf(session),
@@ -169,6 +291,8 @@ export class Board {
         context: { pressureTokens: pressure.pressureTokens, projectedTokens: pressure.projectedTokens, contextWindow: pressure.contextWindow },
         lastTurn: row.lastTurn,
         startedAt: row.startedAt,
+        approval: approval === undefined ? undefined : { id: approval.id, toolName: approval.toolName, reason: approval.reason },
+        ask: ask === undefined ? undefined : { id: ask.id, questions: ask.questions },
       });
     }
     rows.sort((a, b) => (STATE_PRIORITY[a.state] ?? 9) - (STATE_PRIORITY[b.state] ?? 9)
@@ -179,6 +303,15 @@ export class Board {
       if (row.busy) counts.busy += 1;
       if (row.state === "approval") counts.waiting += 1;
       if (row.state === "error") counts.failed += 1;
+    }
+    const approvals = [];
+    const questions = [];
+    for (const held of this.pending.values()) {
+      if (held.kind === "approval") {
+        approvals.push({ id: held.id, sessionId: held.sessionId, title: held.title, toolName: held.toolName, reason: held.reason });
+      } else {
+        questions.push({ id: held.id, sessionId: held.sessionId, title: held.title, questions: held.questions });
+      }
     }
     this.revision += 1;
     return {
@@ -204,8 +337,8 @@ export class Board {
       },
       counts,
       rows,
-      approvals: [...this.heldApprovals.values()],
-      questions: [...this.heldAsks.values()],
+      approvals,
+      questions,
     };
   }
 

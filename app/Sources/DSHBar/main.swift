@@ -13,6 +13,10 @@ if CommandLine.arguments.contains("--dump-status") {
             print("detail=\(snapshot.detail)")
             print("model=\(snapshot.model)")
             print("tokens=\(snapshot.tokens)")
+            print("busy=\(snapshot.busy)")
+            print("sessionId=\(snapshot.activeSessionId ?? "")")
+            print("approvals=\(snapshot.approvalItems.map(\.toolName).joined(separator: ","))")
+            print("questions=\(snapshot.questionCount)")
         case .failure(let error):
             print("error=\(error)")
             exit(1)

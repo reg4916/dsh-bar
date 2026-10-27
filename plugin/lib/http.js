@@ -117,10 +117,50 @@ export function attachHttp(ctx, board, token, origin) {
       return;
     }
 
-    // Approvals, answers and stop land in M3; say so instead of pretending.
-    if (method === "POST" && (path === PREFIX + "/approve" || path === PREFIX + "/answer"
-      || path === PREFIX + "/seen" || path === PREFIX + "/stop")) {
-      send(res, 501, { ok: false, error: "not implemented in this version" });
+    if (method === "POST" && path === PREFIX + "/approve") {
+      const body = JSON.parse((await readBody(req)) || "{}");
+      if (!body.id || (body.outcome !== "allowed-once" && body.outcome !== "rejected")) {
+        send(res, 400, { ok: false, error: "id and outcome required" });
+        return;
+      }
+      if (!board.decideApproval(String(body.id), body.outcome)) {
+        send(res, 404, { ok: false, error: "not pending" });
+        return;
+      }
+      send(res, 200, { ok: true });
+      return;
+    }
+
+    if (method === "POST" && path === PREFIX + "/answer") {
+      const body = JSON.parse((await readBody(req)) || "{}");
+      if (!body.id || !Array.isArray(body.answers)) {
+        send(res, 400, { ok: false, error: "id and answers required" });
+        return;
+      }
+      if (!board.answerAsk(String(body.id), body.answers)) {
+        send(res, 404, { ok: false, error: "not pending" });
+        return;
+      }
+      send(res, 200, { ok: true });
+      return;
+    }
+
+    if (method === "POST" && path === PREFIX + "/stop") {
+      const body = JSON.parse((await readBody(req)) || "{}");
+      if (!body.sessionId) {
+        send(res, 400, { ok: false, error: "sessionId required" });
+        return;
+      }
+      if (!board.stop(String(body.sessionId))) {
+        send(res, 404, { ok: false, error: "no running agent" });
+        return;
+      }
+      send(res, 200, { ok: true });
+      return;
+    }
+
+    if (method === "POST" && path === PREFIX + "/seen") {
+      send(res, 501, { ok: false, error: "unread state is not tracked in this version" });
       return;
     }
 

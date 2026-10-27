@@ -1,32 +1,34 @@
 # DSH Bar
 
-An animated whale in the macOS menu bar for **DeepSeek Harness** — see what the agent is doing without switching windows.
+An animated whale in the macOS menu bar for **DeepSeek Harness** — see and steer the agent without switching windows.
 
-![DSH Bar in the menu bar](docs/menubar-live.png)
+![DSH Bar popover](docs/popover.png)
 
-> **Status: M2.** The app shows live session state from a running DSH (title, state, model, tokens) and reacts to the Host lifecycle. Approvals and actions are M3.
+> **Status: M3.** Live session state, approvals (Approve/Deny), stop turn, open the session in DSH, and launch at login. M4 is packaging and release.
 
-## What it shows
+## What it does
 
 | State | Menu bar |
 |---|---|
 | Idle | still whale |
 | Thinking / tool running | swimming whale + spout |
-| Waiting for approval | red dot next to the whale (M3 wires the buttons) |
+| Waiting for approval | red dot (and a count when questions are also waiting) |
 | Done | short "done" flash, then idle |
 | Error | stays until the next turn starts |
 | DSH not running | dimmed whale, popover says why |
 
-Left click opens a popover with the live session: title, step/tool, model, tokens, **Open DSH** and **Quit**. Right-click offers the same plus a login-item placeholder. The app never blocks DSH: it polls a loopback endpoint every 0.8 s and re-reads `runtime.json` before each request (Desktop starts the Host with `--port 0`, so the port changes on every restart).
+Left click opens the popover: session title, current step/tool, model, tokens, **Approve/Deny** for a held tool approval, **Stop** for a running turn, **Open DSH**, **Quit**. Right-click: Open DSH, Stop Current Turn, Launch at Login, Quit.
+
+The app never blocks DSH: it polls a loopback endpoint every 0.8 s and re-reads `runtime.json` before each request (Desktop starts the Host with `--port 0`, so the port changes on every restart). The whale is drawn in code as a template image, so it follows light/dark menu bars without shipping sprites.
 
 ## Architecture
 
 Two halves, both MIT:
 
-- **`plugin/` — `dsh-bar` host plugin** (npm). Writes `$DSH_HOME/dsh-bar/runtime.json` (`0700`/`0600`, token + origin + pid), mounts `/dsh-bar` on the Host's web server, folds `session/event` / `agent/status` / `agent/error` into a small state document. Message bodies never leave the Host.
-- **`app/` — native menu bar app** (Swift, AppKit). Reads `runtime.json`, polls `GET /dsh-bar/status` with a Bearer token, renders the whale. Template images adapt to light/dark menu bars; the whale is drawn in code (no sprite assets).
+- **`plugin/` — `dsh-bar` host plugin** (npm). Writes `$DSH_HOME/dsh-bar/runtime.json` (`0700`/`0600`), mounts `/dsh-bar` on the Host web server, folds session events into a small state document, holds `approval/request` and `user-questions/request` waterfalls so the menu bar can answer them, and serves a browser half that opens a session through `ctx.uiWorkspace.openSession`.
+- **`app/` — native menu bar app** (Swift, AppKit). Reads `runtime.json`, polls `GET /dsh-bar/status` with a Bearer token, posts approvals/stop/focus.
 
-Security: loopback only, Bearer token on every native route, page routes use same-origin/bridge trust instead of putting the token in page JS.
+Security: loopback only, Bearer token on every native route, page routes use same-origin/bridge trust instead of putting the token in page JS. Only titles, tool names and usage counters cross the bridge — never message bodies.
 
 ## Install (development)
 
@@ -44,19 +46,31 @@ open build/DSHBar.app
 
 Debug the bridge without the menu bar: `DSHBar.app/Contents/MacOS/DSHBar --dump-status`.
 
-Environment overrides: `DSH_BAR_RUNTIME_FILE` (tests, multiple homes), `DSH_BAR_DEMO=1` (M1 demo sequence).
+Environment overrides: `DSH_BAR_RUNTIME_FILE` (tests, multiple homes), `DSH_BAR_DEMO=1` (demo sequence).
+
+**Approvals note:** the shipped `danger-full-access` preset uses `approval: never`, so approvals never reach the bar. Use the `read-only` or `workspace-write` preset to see Approve/Deny. Questions are surfaced as a badge; answering them from the popover is the next step (open DSH to answer today).
+
+## Endpoints
+
+| Method + path | Auth | Purpose |
+|---|---|---|
+| `GET /dsh-bar/status` | Bearer | state document |
+| `GET /dsh-bar/health` | Bearer | liveness |
+| `POST /dsh-bar/approve` | Bearer | `{id, outcome: "allowed-once" \\| "rejected"}` |
+| `POST /dsh-bar/answer` | Bearer | `{id, answers}` |
+| `POST /dsh-bar/stop` | Bearer | `{sessionId}` |
+| `POST /dsh-bar/focus` | Bearer | `{sessionId}` — ask the page half to open a session |
+| `GET /dsh-bar/pending-focus` | page trust | focus wish for the page half |
 
 ## Free distribution
 
-The project is MIT-licensed and distributed for free through GitHub: source builds with one command, and prebuilt releases will ship `DSHBar.app` + the host plugin tarball once M4 lands.
-
-No paid Apple Developer account is used: the bundle is signed **ad-hoc**. On first launch macOS may warn about an unidentified developer — right-click the app and choose **Open**, or run `xattr -dr com.apple.quarantine /Applications/DSHBar.app`.
+MIT-licensed, distributed for free through GitHub: source builds with one command; prebuilt `DSHBar.app` and the host plugin tarball ship in GitHub Releases (M4). No paid Apple Developer account is used — the bundle is signed **ad-hoc**, so on first launch right-click the app and choose **Open** (or run `xattr -dr com.apple.quarantine /Applications/DSHBar.app`).
 
 ## Roadmap
 
-- **M1** — native shell, animated whale, popover, demo sequence ✅
-- **M2** — host plugin (`dsh-bar`), runtime.json, live state, polling, tests ✅
-- **M3** — approve/deny and answer from the popover, open session, stop turn, launch at login
+- **M1** — native shell, animated whale, popover ✅
+- **M2** — host plugin, runtime.json, live state, polling ✅
+- **M3** — approvals, stop, open session, launch at login ✅
 - **M4** — universal binary, GitHub Actions, release packaging, npm publish, catalog entry
 
 ## License

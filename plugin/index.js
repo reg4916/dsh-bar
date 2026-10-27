@@ -12,7 +12,7 @@ import { dshHome, loadOrCreateToken, runtimePath, writeRuntime } from "./lib/sto
 const VERSION = "0.1.0";
 
 export const name = "dsh-bar";
-export const inject = ["sessions", "agents", "webServer"];
+export const inject = ["sessions", "agents", "webServer", "approval", "userQuestions"];
 
 export function apply(ctx) {
   const serverId = randomBytes(8).toString("hex");
@@ -44,4 +44,9 @@ export function apply(ctx) {
   ctx.effect(() => ctx.on("agent/error", ({ agent, error }) => {
     board.onAgentError(agent?.session?.id ?? agent?.id, error);
   }), "dsh-bar: agent-error");
+  // Waterfalls are the only place an approval/question can be answered besides
+  // the GUI. prepend wins over the shipped answerer; the race in the Board
+  // settles whichever answers first.
+  ctx.effect(() => ctx.on("approval/request", (request, next) => board.holdApproval(request, next), { prepend: true }), "dsh-bar: approvals");
+  ctx.effect(() => ctx.on("user-questions/request", (request, next) => board.holdAsk(request, next), { prepend: true }), "dsh-bar: questions");
 }

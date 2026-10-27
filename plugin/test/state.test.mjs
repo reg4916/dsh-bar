@@ -105,3 +105,79 @@ test("token totals come from the nested projection shape", () => {
   assert.equal(snap.active.tokens, 696459);
   assert.equal(snap.active.usage.totals.uncachedInputTokens, 388200);
 });
+
+test("approval is held, shown and resolved", async () => {
+  const sessions = [session("s1")];
+  const ctx = fakeCtx(sessions);
+  ctx.sessions.get = (id) => sessions.find((item) => item.id === id);
+  const board = new Board(ctx, "srv");
+  board.origin = "http://127.0.0.1:1";
+  const request = { agent: { id: "s1" }, toolName: "bash", reason: "write src/parser.ts", signal: new AbortController().signal };
+  const promise = board.holdApproval(request, () => new Promise(() => {}));
+  const snap = board.snapshot();
+  assert.equal(snap.active.state, "approval");
+  assert.equal(snap.approvals.length, 1);
+  assert.equal(snap.approvals[0].toolName, "bash");
+  assert.equal(board.decideApproval(snap.approvals[0].id, "allowed-once"), true);
+  assert.equal(await promise, "allowed-once");
+  assert.equal(board.snapshot().approvals.length, 0);
+});
+
+test("approval from a subagent is never held", async () => {
+  const sessions = [session("child", { origin: "subagent" })];
+  const ctx = fakeCtx(sessions);
+  ctx.sessions.get = (id) => sessions.find((item) => item.id === id);
+  const board = new Board(ctx, "srv");
+  board.origin = "http://127.0.0.1:1";
+  const request = { agent: { id: "child" }, toolName: "bash", signal: new AbortController().signal };
+  const value = await board.holdApproval(request, () => Promise.resolve("allowed-once"));
+  assert.equal(value, "allowed-once");
+  assert.equal(board.snapshot().approvals.length, 0);
+});
+
+test("aborting an approval clears the held request", async () => {
+  const sessions = [session("s1")];
+  const ctx = fakeCtx(sessions);
+  ctx.sessions.get = (id) => sessions.find((item) => item.id === id);
+  const board = new Board(ctx, "srv");
+  board.origin = "http://127.0.0.1:1";
+  const controller = new AbortController();
+  board.holdApproval({ agent: { id: "s1" }, toolName: "bash", signal: controller.signal }, () => new Promise(() => {}));
+  assert.equal(board.snapshot().approvals.length, 1);
+  controller.abort();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(board.snapshot().approvals.length, 0);
+});
+
+test("question is held and answered", async () => {
+  const sessions = [session("s1")];
+  const ctx = fakeCtx(sessions);
+  ctx.sessions.get = (id) => sessions.find((item) => item.id === id);
+  const board = new Board(ctx, "srv");
+  board.origin = "http://127.0.0.1:1";
+  const request = {
+    agent: { id: "s1" },
+    questions: [{ id: "q1", question: "Pick one", options: [{ label: "A" }, { label: "B" }] }],
+    signal: new AbortController().signal,
+  };
+  const promise = board.holdAsk(request, () => new Promise(() => {}));
+  const snap = board.snapshot();
+  assert.equal(snap.questions.length, 1);
+  assert.equal(snap.questions[0].questions[0].question, "Pick one");
+  assert.equal(board.answerAsk(snap.questions[0].id, [{ id: "q1", selected: ["A"] }]), true);
+  const answer = await promise;
+  assert.deepEqual(answer, { answers: [{ id: "q1", selected: ["A"] }] });
+});
+
+test("stop cancels the running agent", () => {
+  const sessions = [session("s1")];
+  const ctx = fakeCtx(sessions);
+  let seen;
+  ctx.__agents.set("s1", { status: "running", cancel: (cause, options) => { seen = { cause, options }; } });
+  const board = new Board(ctx, "srv");
+  board.origin = "http://127.0.0.1:1";
+  assert.equal(board.stop("s1"), true);
+  assert.equal(seen.cause.kind, "user");
+  assert.equal(seen.options.keepInbox, true);
+  assert.equal(board.stop("missing"), false);
+});
