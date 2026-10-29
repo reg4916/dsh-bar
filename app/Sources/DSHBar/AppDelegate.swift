@@ -52,7 +52,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             onDeny: { [weak self] id in self?.decide(id: id, outcome: "rejected") },
             onOpen: { [weak self] in self?.openActiveSession() },
             onStop: { [weak self] in self?.stopActive() },
-            onQuit: { NSApplication.shared.terminate(nil) }
+            onQuit: { NSApplication.shared.terminate(nil) },
+            onAnswer: { [weak self] heldId, answers in self?.sendAnswer(heldId: heldId, answers: answers) }
         )
     }
 
@@ -154,6 +155,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func decide(id: String, outcome: String) {
         client.post(path: "/dsh-bar/approve", body: ["id": id, "outcome": outcome]) { [weak self] _ in
+            DispatchQueue.main.async { self?.poll() }
+        }
+    }
+
+    private func sendAnswer(heldId: String, answers: [[String: Any]]) {
+        client.answer(heldId: heldId, answers: answers) { [weak self] _ in
             DispatchQueue.main.async { self?.poll() }
         }
     }
@@ -267,19 +274,25 @@ final class StatusViewController: NSViewController {
     private let onOpen: () -> Void
     private let onStop: () -> Void
     private let onQuit: () -> Void
+    private let onAnswer: (String, [[String: Any]]) -> Void
+    private var approvalIndex = 0
+    private var optionButtons: [[NSButton]] = []
+    private var customFields: [NSTextField] = []
 
     init(snapshot: BarSnapshot,
          onApprove: @escaping (String) -> Void,
          onDeny: @escaping (String) -> Void,
          onOpen: @escaping () -> Void,
          onStop: @escaping () -> Void,
-         onQuit: @escaping () -> Void) {
+         onQuit: @escaping () -> Void,
+         onAnswer: @escaping (String, [[String: Any]]) -> Void) {
         self.snapshot = snapshot
         self.onApprove = onApprove
         self.onDeny = onDeny
         self.onOpen = onOpen
         self.onStop = onStop
         self.onQuit = onQuit
+        self.onAnswer = onAnswer
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -335,17 +348,12 @@ final class StatusViewController: NSViewController {
         let tokens = NumberFormatter.localizedString(from: NSNumber(value: snapshot.tokens), number: .decimal)
         stack.addArrangedSubview(label("\(snapshot.state.label) · \(snapshot.model) · \(tokens) tok", size: 10, color: .tertiaryLabelColor))
 
-        if let approval = snapshot.approvalItems.first {
-            let reason = approval.reason.map { " — " + $0 } ?? ""
-            stack.addArrangedSubview(label("Approval: " + approval.toolName + reason, size: 11, color: .systemOrange))
-            let row = NSStackView(views: [button("Approve", action: #selector(approveTapped)), button("Deny", action: #selector(denyTapped))])
-            row.orientation = .horizontal
-            row.spacing = 8
-            stack.addArrangedSubview(row)
+        if let group = snapshot.questionGroups.first {
+            renderQuestion(group)
         }
 
-        if snapshot.questionCount > 0 {
-            stack.addArrangedSubview(label("Question waiting — open DSH to answer", size: 11, color: .systemOrange))
+        if !snapshot.approvalItems.isEmpty {
+            renderApproval()
         }
 
         let actions = NSStackView(views: [button("Open DSH", action: #selector(openTapped))])
@@ -358,12 +366,110 @@ final class StatusViewController: NSViewController {
         stack.addArrangedSubview(actions)
     }
 
+    // MARK: - Question composer
+
+    private func renderQuestion(_ group: BarQuestionGroup) {
+        optionButtons = []
+        customFields = []
+        for question in group.questions {
+            if let header = question.header, !header.isEmpty {
+                stack.addArrangedSubview(label(header, size: 10, weight: .semibold, color: .secondaryLabelColor))
+            }
+            stack.addArrangedSubview(label(question.question, size: 12, weight: .medium))
+            if let detail = question.detail, !detail.isEmpty {
+                stack.addArrangedSubview(label(detail, size: 10, color: .secondaryLabelColor))
+            }
+
+            var buttons: [NSButton] = []
+            if let options = question.options, !options.isEmpty {
+                let optionsStack = NSStackView()
+                optionsStack.orientation = .vertical
+                optionsStack.alignment = .leading
+                optionsStack.spacing = 2
+                for option in options {
+                    let choice = NSButton(checkboxWithTitle: option.label, target: nil, action: nil)
+                    choice.setButtonType(question.multiSelect == true ? .switch : .radio)
+                    choice.font = .systemFont(ofSize: 11)
+                    if let description = option.description, !description.isEmpty {
+                        choice.toolTip = description
+                    }
+                    optionsStack.addArrangedSubview(choice)
+                    buttons.append(choice)
+                }
+                stack.addArrangedSubview(optionsStack)
+            }
+            optionButtons.append(buttons)
+
+            let custom = NSTextField()
+            custom.placeholderString = "Or type your own…"
+            custom.font = .systemFont(ofSize: 11)
+            custom.widthAnchor.constraint(equalToConstant: 280).isActive = true
+            stack.addArrangedSubview(custom)
+            customFields.append(custom)
+        }
+        stack.addArrangedSubview(button("Send answer", action: #selector(sendAnswerTapped)))
+    }
+
+    @objc private func sendAnswerTapped() {
+        guard let group = snapshot.questionGroups.first else { return }
+        var answers: [[String: Any]] = []
+        for (index, question) in group.questions.enumerated() {
+            let selected = index < optionButtons.count
+                ? optionButtons[index].filter { $0.state == .on }.map { $0.title }
+                : []
+            let custom = index < customFields.count
+                ? customFields[index].stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                : ""
+            // DSH rule: a custom answer replaces the selection for single-select,
+            // while multi-select keeps its labels next to the custom text.
+            let effective = (question.multiSelect == true || custom.isEmpty) ? selected : []
+            var answer: [String: Any] = ["id": question.id, "selected": effective]
+            if !custom.isEmpty { answer["custom"] = custom }
+            answers.append(answer)
+        }
+        onAnswer(group.id, answers)
+    }
+
+    // MARK: - Approvals
+
+    private func renderApproval() {
+        let items = snapshot.approvalItems
+        approvalIndex = min(max(0, approvalIndex), items.count - 1)
+        let approval = items[approvalIndex]
+        let suffix = items.count > 1 ? " (\(approvalIndex + 1)/\(items.count))" : ""
+        let reason = approval.reason.map { " — " + $0 } ?? ""
+        stack.addArrangedSubview(label("Approval" + suffix + ": " + approval.toolName + reason, size: 11, color: .systemOrange))
+        let row = NSStackView(views: [
+            button("Approve", action: #selector(approveTapped)),
+            button("Deny", action: #selector(denyTapped)),
+        ])
+        row.orientation = .horizontal
+        row.spacing = 8
+        if items.count > 1 {
+            row.addArrangedSubview(button("Previous", action: #selector(previousApproval)))
+            row.addArrangedSubview(button("Next", action: #selector(nextApproval)))
+        }
+        stack.addArrangedSubview(row)
+    }
+
+    @objc private func previousApproval() {
+        approvalIndex = max(0, approvalIndex - 1)
+        render()
+    }
+
+    @objc private func nextApproval() {
+        approvalIndex = min(snapshot.approvalItems.count - 1, approvalIndex + 1)
+        render()
+    }
+
     @objc private func approveTapped() {
-        if let approval = snapshot.approvalItems.first { onApprove(approval.id) }
+        guard approvalIndex < snapshot.approvalItems.count else { return }
+        onApprove(snapshot.approvalItems[approvalIndex].id)
     }
 
     @objc private func denyTapped() {
-        if let approval = snapshot.approvalItems.first { onDeny(approval.id) }
+        guard approvalIndex < snapshot.approvalItems.count else { return }
+        onDeny(snapshot.approvalItems[approvalIndex].id)
     }
 
     @objc private func openTapped() { onOpen() }

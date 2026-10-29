@@ -34,6 +34,39 @@ struct BarApprovalItem: Identifiable {
     let reason: String?
 }
 
+/// One option of an ask_user_question prompt. The value sent back is the label.
+struct BarOption: Decodable {
+    let label: String
+    let description: String?
+}
+
+/// One question of a held ask. Mirrors the DSH user-questions payload.
+struct BarQuestion: Decodable {
+    let id: String
+    let question: String
+    let detail: String?
+    let header: String?
+    let options: [BarOption]?
+    let multiSelect: Bool?
+}
+
+/// A whole ask: its held id plus every question it carries.
+struct BarQuestionGroup: Decodable, Identifiable {
+    let id: String
+    let sessionId: String?
+    let title: String?
+    let questions: [BarQuestion]
+}
+
+/// Compact row for the session picker, built from status.rows.
+struct BarSession: Identifiable {
+    let id: String
+    let title: String
+    let state: BarState
+    let busy: Bool
+    let waiting: Bool
+}
+
 /// Snapshot of what the menu bar shows.
 struct BarSnapshot {
     var state: BarState = .idle
@@ -47,6 +80,8 @@ struct BarSnapshot {
     var questionCount: Int = 0
     var activeSessionId: String? = nil
     var busy: Bool = false
+    var questionGroups: [BarQuestionGroup] = []
+    var sessions: [BarSession] = []
 
     static let demo: [BarSnapshot] = [
         BarSnapshot(state: .idle, title: "No active session", detail: "Waiting for DSH", model: "deepseek-flash"),

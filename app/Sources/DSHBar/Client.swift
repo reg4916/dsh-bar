@@ -24,9 +24,25 @@ struct BarApproval: Decodable {
     let reason: String?
 }
 
-struct BarQuestion: Decodable {
+struct BarApprovalRef: Decodable {
     let id: String
-    let sessionId: String?
+    let toolName: String?
+    let reason: String?
+}
+
+struct BarAskRef: Decodable {
+    let id: String
+    let questions: [BarQuestion]
+}
+
+/// One session row from status.rows: enough for a picker and a per-session stop.
+struct BarRow: Decodable {
+    let id: String
+    let title: String?
+    let state: String?
+    let busy: Bool?
+    let approval: BarApprovalRef?
+    let ask: BarAskRef?
 }
 
 struct BarStatus: Decodable {
@@ -36,7 +52,8 @@ struct BarStatus: Decodable {
     let generatedAt: Double?
     let active: BarActive?
     let approvals: [BarApproval]?
-    let questions: [BarQuestion]?
+    let questions: [BarQuestionGroup]?
+    let rows: [BarRow]?
 }
 
 enum ClientError: Error, CustomStringConvertible {
@@ -179,11 +196,27 @@ final class BarClient {
         }.resume()
     }
 
+    /// Answers a held ask. `answers` is the DSH batch:
+    /// [{"id": questionId, "selected": [labels], "custom": "free text"}].
+    func answer(heldId: String, answers: [[String: Any]], completion: @escaping (Result<Void, ClientError>) -> Void) {
+        post(path: "/dsh-bar/answer", body: ["id": heldId, "answers": answers], completion: completion)
+    }
+
     static func snapshot(from status: BarStatus) -> BarSnapshot {
         let active = status.active
         let state = BarState(rawValue: active?.state ?? "idle") ?? .idle
         let items = (status.approvals ?? []).map {
             BarApprovalItem(id: $0.id, toolName: $0.toolName ?? "tool", reason: $0.reason)
+        }
+        let groups = status.questions ?? []
+        let sessions = (status.rows ?? []).map {
+            BarSession(
+                id: $0.id,
+                title: $0.title ?? "Session",
+                state: BarState(rawValue: $0.state ?? "idle") ?? .idle,
+                busy: $0.busy ?? false,
+                waiting: $0.approval != nil || $0.ask != nil
+            )
         }
         return BarSnapshot(
             state: state,
@@ -194,9 +227,11 @@ final class BarClient {
             cost: "—",
             approvals: items.count,
             approvalItems: items,
-            questionCount: (status.questions ?? []).count,
+            questionCount: groups.count,
             activeSessionId: active?.sessionId,
-            busy: state == .thinking || state == .tool
+            busy: state == .thinking || state == .tool,
+            questionGroups: groups,
+            sessions: sessions
         )
     }
 }
