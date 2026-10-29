@@ -20,6 +20,16 @@ An animated whale in the macOS menu bar for **DeepSeek Harness** — see and ste
 
 Left click opens the popover: session title, current step/tool, model, tokens, **Approve/Deny** for held tool approvals (with a 1/N queue), **answer questions** right there (radio / checkbox / free text), the session list, **Stop**, **Open DSH**, **Quit**. Right-click: Open DSH, Stop, Settings, Check for Updates, Launch at Login, Quit.
 
+## The whale
+
+The mark is code, not an asset: [WhaleIcon.swift](app/Sources/DSHBar/WhaleIcon.swift) draws the body oval, swinging flukes, fin, three spout drops and a transparent eye hole into a 22 pt template image, so macOS tints it for light and dark menu bars. Twelve frames at 12 fps run only while the agent is thinking or running a tool; other states are still.
+
+![Whale animation](docs/whale-animation.gif)
+
+![Whale animation frames](docs/whale-frames.png)
+
+![Whale states](docs/whale-states.png)
+
 New in **0.2**:
 
 - answer `ask_user_question` prompts from the popover — single select, multi select, custom text, multiple questions per prompt;
