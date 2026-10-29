@@ -53,3 +53,4 @@
 "action.dismiss" = "Скрыть";
 "settings.notificationsUnavailable" = "macOS не разрешает уведомления для сборок без Apple-сертификата; вместо них показывается карточка поверх экрана.";
 "settings.openNotifications" = "Открыть настройки уведомлений…";
+"action.stop" = "Стоп";

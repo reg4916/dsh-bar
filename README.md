@@ -20,7 +20,7 @@ An animated whale in the macOS menu bar for **DeepSeek Harness** — see and ste
 
 Left click opens the popover: session title, current step/tool, model, tokens, **Approve/Deny** for held tool approvals (with a 1/N queue), **answer questions** right there (radio / checkbox / free text), the session list, **Stop**, **Open DSH**, **Quit**. Right-click: Open DSH, Stop, Settings, Check for Updates, Launch at Login, Quit.
 
-New in **0.2.0**:
+New in **0.2**:
 
 - answer `ask_user_question` prompts from the popover — single select, multi select, custom text, multiple questions per prompt;
 - approvals queue: "1 of N" with Previous/Next instead of silently hiding the rest;
@@ -42,7 +42,7 @@ brew install --cask dsh-bar
 
 ### Manual
 
-Download `DSHBar-0.2.0-macos-universal.zip` from the [latest release](https://github.com/reg4916/dsh-bar/releases/latest), unzip into `/Applications`, and on first launch right-click → **Open** (or `xattr -dr com.apple.quarantine /Applications/DSHBar.app`). The bundle is **ad-hoc signed** — there is no paid Apple Developer ID, so no notarization.
+Download `DSHBar-0.2.1-macos-universal.zip` from the [latest release](https://github.com/reg4916/dsh-bar/releases/latest), unzip into `/Applications`, and on first launch right-click → **Open** (or `xattr -dr com.apple.quarantine /Applications/DSHBar.app`). The bundle is **ad-hoc signed** — there is no paid Apple Developer ID, so no notarization.
 
 ### Host plugin
 

@@ -14,6 +14,18 @@ if CommandLine.arguments.contains("--notification-status") {
     exit(0)
 }
 
+// --update-check: print the newer release tag, if any, and exit.
+if CommandLine.arguments.contains("--update-check") {
+    let semaphore = DispatchSemaphore(value: 0)
+    UpdateChecker.check { tag in
+        print("latest=" + (tag ?? "none"))
+        print("current=" + UpdateChecker.currentVersion)
+        semaphore.signal()
+    }
+    _ = semaphore.wait(timeout: .now() + 15)
+    exit(0)
+}
+
 // --alert-test: show the in-app fallback card for a few seconds and exit.
 if CommandLine.arguments.contains("--alert-test") {
     let app = NSApplication.shared

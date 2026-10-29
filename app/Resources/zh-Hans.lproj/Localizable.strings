@@ -53,3 +53,4 @@
 "action.dismiss" = "关闭";
 "settings.notificationsUnavailable" = "macOS 不允许未签名的应用发送通知；DSH Bar 会改为显示浮动卡片。";
 "settings.openNotifications" = "打开通知设置…";
+"action.stop" = "停止";

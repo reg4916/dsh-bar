@@ -31,10 +31,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureStatusItem()
         configurePopover()
         startFrameTimer()
+        if ProcessInfo.processInfo.environment["DSH_BAR_DEMO_QUESTION"] == "1" {
+            showQuestionPreview()
+            return
+        }
+        if ProcessInfo.processInfo.environment["DSH_BAR_SHOW_SETTINGS"] == "1" {
+            startPolling()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.openSettings() }
+            return
+        }
         if demo {
             startDemoTimer()
         } else {
             startPolling()
+        }
+    }
+
+    /// Static snapshot with a question, used to screenshot the composer.
+    private func showQuestionPreview() {
+        var preview = BarSnapshot()
+        preview.state = .thinking
+        preview.title = "Refactor the parser"
+        preview.detail = "Tool: bash"
+        preview.model = "deepseek-flash"
+        preview.tokens = 18_420
+        preview.busy = true
+        preview.questionGroups = [BarQuestionGroup(
+            id: "demo-question",
+            sessionId: "s1",
+            title: "Refactor the parser",
+            questions: [BarQuestion(
+                id: "q1",
+                question: "Which parser should we keep?",
+                detail: "Both strategies parse the same grammar.",
+                header: "Parser choice",
+                options: [
+                    BarOption(label: "Recursive descent", description: "simpler"),
+                    BarOption(label: "PEG", description: "more flexible"),
+                ],
+                multiSelect: false
+            )]
+        )]
+        preview.questionCount = 1
+        preview.sessions = [
+            BarSession(id: "s1", title: "Refactor the parser", state: .thinking, busy: true, waiting: false),
+            BarSession(id: "s2", title: "Plugin docs", state: .idle, busy: false, waiting: false),
+        ]
+        apply(preview, connected: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            guard let self, let button = self.statusItem.button else { return }
+            self.popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         }
     }
 
@@ -348,6 +394,10 @@ final class StatusViewController: NSViewController {
 
     override func loadView() {
         let container = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
+        // NSPopover uses a vibrant material that lets the window behind bleed
+        // through; paint the content solid so text stays readable.
+        container.wantsLayer = true
+        container.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
@@ -363,12 +413,20 @@ final class StatusViewController: NSViewController {
         ])
         view = container
         render()
+        updatePreferredSize()
     }
 
     func update(_ snapshot: BarSnapshot) {
         self.snapshot = snapshot
         guard isViewLoaded else { return }
         render()
+        updatePreferredSize()
+    }
+
+    /// NSPopover otherwise keeps its initial frame and clips the last row.
+    private func updatePreferredSize() {
+        view.layoutSubtreeIfNeeded()
+        preferredContentSize = NSSize(width: 320, height: max(140, stack.fittingSize.height))
     }
 
     private func label(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = .labelColor) -> NSTextField {
@@ -423,9 +481,8 @@ final class StatusViewController: NSViewController {
         actions.orientation = .horizontal
         actions.spacing = 8
         if snapshot.busy {
-            actions.addArrangedSubview(button(L("menu.stop"), action: #selector(stopTapped)))
+            actions.addArrangedSubview(button(L("action.stop"), action: #selector(stopTapped)))
         }
-        actions.addArrangedSubview(button(L("menu.quit"), action: #selector(quitTapped)))
         stack.addArrangedSubview(actions)
     }
 
@@ -450,8 +507,12 @@ final class StatusViewController: NSViewController {
                 optionsStack.alignment = .leading
                 optionsStack.spacing = 2
                 for option in options {
-                    let choice = NSButton(checkboxWithTitle: option.label, target: nil, action: nil)
-                    choice.setButtonType(question.multiSelect == true ? .switch : .radio)
+                    let choice: NSButton
+                    if question.multiSelect == true {
+                        choice = NSButton(checkboxWithTitle: option.label, target: nil, action: nil)
+                    } else {
+                        choice = NSButton(radioButtonWithTitle: option.label, target: nil, action: nil)
+                    }
                     choice.font = .systemFont(ofSize: 11)
                     if let description = option.description, !description.isEmpty {
                         choice.toolTip = description
