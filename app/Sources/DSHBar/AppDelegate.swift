@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var snapshot = BarSnapshot()
     private var connected = false
     private var inflight = false
+    private var autoAnswered = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         demo = ProcessInfo.processInfo.environment["DSH_BAR_DEMO"] == "1"
@@ -128,6 +129,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.connected = connected
         snapshot = next
         notifier.sync(next, enabled: Settings.shared.notificationsEnabled)
+        if ProcessInfo.processInfo.environment["DSH_BAR_AUTOANSWER"] == "1" {
+            if next.questionGroups.isEmpty {
+                autoAnswered = false
+            } else if !autoAnswered {
+                autoAnswered = true
+                if let button = statusItem.button {
+                    popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                    (self?.popover.contentViewController as? StatusViewController)?.autoAnswerFirstOption()
+                }
+            }
+        }
         if changed {
             (popover.contentViewController as? StatusViewController)?.update(snapshot)
         }
@@ -309,6 +323,7 @@ final class StatusViewController: NSViewController {
     private var approvalIndex = 0
     private var optionButtons: [[NSButton]] = []
     private var customFields: [NSTextField] = []
+    private var sendButton: NSButton?
 
     init(snapshot: BarSnapshot,
          onApprove: @escaping (String) -> Void,
@@ -455,7 +470,18 @@ final class StatusViewController: NSViewController {
             stack.addArrangedSubview(custom)
             customFields.append(custom)
         }
-        stack.addArrangedSubview(button(L("question.send"), action: #selector(sendAnswerTapped)))
+        let send = button(L("question.send"), action: #selector(sendAnswerTapped))
+        sendButton = send
+        stack.addArrangedSubview(send)
+    }
+
+    /// Test hook: drives the real controls (radio/checkbox click + Send click),
+    /// so an end-to-end test answers through the popover code path.
+    func autoAnswerFirstOption() {
+        for buttons in optionButtons {
+            buttons.first?.performClick(nil)
+        }
+        sendButton?.performClick(nil)
     }
 
     @objc private func sendAnswerTapped() {

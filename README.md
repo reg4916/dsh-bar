@@ -94,7 +94,8 @@ cd .. && ./scripts/test-native.sh   # 20 native checks
 ```
 
 Debug without the menu bar: `DSHBar --dump-status`, `--notification-status`, `--alert-test`.
-Environment overrides: `DSH_BAR_RUNTIME_FILE`, `DSH_BAR_DEMO=1`.
+Environment overrides: `DSH_BAR_RUNTIME_FILE`, `DSH_BAR_DEMO=1`, `DSH_BAR_AUTOANSWER=1`
+(test hook: opens the popover and clicks the first option + Send — used for the end-to-end question test).
 
 ## Roadmap
 
