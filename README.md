@@ -50,7 +50,8 @@ New in **0.3**:
 New in **0.4**:
 
 - **instant updates** over Server-Sent Events (`GET /dsh-bar/events`); the 0.8 s poll stays as a safety net and for reconnects;
-- **global hotkey ⌥⌘D** toggles the popover from any app (Settings can disable it).
+- **global hotkey ⌥⌘D** toggles the popover from any app (Settings can disable it);
+- **0.4.1:** redrew the whale — big head, mouth line, broad raised fluke and pectoral fin, instead of the fish-like oval.
 
 ## Download and install (free)
 
@@ -64,7 +65,7 @@ brew install --cask dsh-bar
 
 ### Manual
 
-Download `DSHBar-0.4.0-macos-universal.zip` from the [latest release](https://github.com/reg4916/dsh-bar/releases/latest), unzip into `/Applications`, and on first launch right-click → **Open** (or `xattr -dr com.apple.quarantine /Applications/DSHBar.app`). The bundle is **ad-hoc signed** — there is no paid Apple Developer ID, so no notarization.
+Download `DSHBar-0.4.1-macos-universal.zip` from the [latest release](https://github.com/reg4916/dsh-bar/releases/latest), unzip into `/Applications`, and on first launch right-click → **Open** (or `xattr -dr com.apple.quarantine /Applications/DSHBar.app`). The bundle is **ad-hoc signed** — there is no paid Apple Developer ID, so no notarization.
 
 ### Host plugin
 
