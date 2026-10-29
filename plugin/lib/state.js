@@ -19,6 +19,25 @@ export class Board {
     this.pending = new Map();
     this.focus = undefined;
     this.revision = 0;
+    this.listeners = new Set();
+  }
+
+  touch() {
+    this.revision += 1;
+    for (const listener of this.listeners) {
+      try {
+        listener();
+      } catch {
+        /* a broken subscriber must not break the fold */
+      }
+    }
+  }
+
+  subscribe(listener) {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
   }
 
   row(sessionId) {
@@ -42,6 +61,7 @@ export class Board {
     for (const [id, held] of this.pending) {
       if (held.sessionId === sessionId) this.pending.delete(id);
     }
+    this.touch();
   }
 
   onSessionEvent(session, event) {
@@ -78,6 +98,7 @@ export class Board {
       default:
         break;
     }
+    this.touch();
   }
 
   onAgentError(sessionId, error) {
@@ -85,6 +106,7 @@ export class Board {
     const row = this.row(sessionId);
     const message = String(error?.message ?? error ?? "agent error");
     row.lastError = { at: Date.now(), message: message.slice(0, 200) };
+    this.touch();
   }
 
   isChild(sessionId) {
@@ -114,13 +136,13 @@ export class Board {
         resolve,
         at: Date.now(),
       });
-      this.revision += 1;
+      this.touch();
       request.signal?.addEventListener("abort", () => {
-        if (this.pending.delete(id)) this.revision += 1;
+        if (this.pending.delete(id)) this.touch();
       }, { once: true });
     });
     return Promise.race([held, next()]).finally(() => {
-      if (this.pending.delete(id)) this.revision += 1;
+      if (this.pending.delete(id)) this.touch();
     });
   }
 
@@ -154,16 +176,16 @@ export class Board {
         resolve,
         at: Date.now(),
       });
-      this.revision += 1;
+      this.touch();
       request.signal?.addEventListener("abort", () => {
-        if (this.pending.delete(id)) this.revision += 1;
+        if (this.pending.delete(id)) this.touch();
       }, { once: true });
     });
     return Promise.race([held, Promise.resolve().then(next)]).finally(() => {
       downstream.abort(new Error("Question settled through another answerer"));
       if (originalSignal === undefined) delete request.signal;
       else request.signal = originalSignal;
-      if (this.pending.delete(id)) this.revision += 1;
+      if (this.pending.delete(id)) this.touch();
     });
   }
 
@@ -171,7 +193,7 @@ export class Board {
     const held = this.pending.get(id);
     if (!held || held.kind !== "approval") return false;
     this.pending.delete(id);
-    this.revision += 1;
+    this.touch();
     held.resolve(outcome);
     return true;
   }
@@ -180,7 +202,7 @@ export class Board {
     const held = this.pending.get(id);
     if (!held || held.kind !== "ask") return false;
     this.pending.delete(id);
-    this.revision += 1;
+    this.touch();
     held.resolve({ answers });
     return true;
   }

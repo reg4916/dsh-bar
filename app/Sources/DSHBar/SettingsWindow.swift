@@ -46,6 +46,7 @@ final class SettingsViewController: NSViewController {
         }
         stack.addArrangedSubview(check(L("settings.animate"), Settings.shared.animateIcon, #selector(toggleAnimate)))
         stack.addArrangedSubview(check(L("settings.dotOnly"), Settings.shared.dotOnly, #selector(toggleDotOnly)))
+        stack.addArrangedSubview(check(L("settings.hotkey"), Settings.shared.hotKeyEnabled, #selector(toggleHotKey)))
         stack.addArrangedSubview(check(L("settings.sessions"), Settings.shared.showSessions, #selector(toggleSessions)))
         stack.addArrangedSubview(hint(L("settings.reduceMotionHint")))
         stack.addArrangedSubview(separator())
@@ -110,6 +111,11 @@ final class SettingsViewController: NSViewController {
 
     @objc private func toggleAnimate(_ sender: NSButton) {
         Settings.shared.animateIcon = sender.state == .on
+        changed()
+    }
+
+    @objc private func toggleHotKey(_ sender: NSButton) {
+        Settings.shared.hotKeyEnabled = sender.state == .on
         changed()
     }
 

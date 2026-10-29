@@ -25,6 +25,11 @@ final class Settings {
         set { defaults.set(newValue, forKey: "dotOnly") }
     }
 
+    var hotKeyEnabled: Bool {
+        get { defaults.object(forKey: "hotKey") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "hotKey") }
+    }
+
     /// System Reduce Motion wins over the app preference.
     var reduceMotion: Bool {
         NSWorkspace.shared.accessibilityDisplayShouldReduceMotion

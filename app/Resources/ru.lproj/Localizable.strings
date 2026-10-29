@@ -55,3 +55,4 @@
 "settings.openNotifications" = "Открыть настройки уведомлений…";
 "action.stop" = "Стоп";
 "settings.dotOnly" = "Показывать только точку статуса";
+"settings.hotkey" = "Глобальный хоткей ⌥⌘D";

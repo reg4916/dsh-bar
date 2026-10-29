@@ -98,6 +98,44 @@ export function attachHttp(ctx, board, token, origin) {
       return;
     }
 
+    // Server-sent events: native clients keep one connection and get a status
+    // frame whenever the fold changes, instead of polling every 0.8 s.
+    if (method === "GET" && path === PREFIX + "/events") {
+      res.writeHead(200, {
+        "content-type": "text/event-stream; charset=utf-8",
+        "cache-control": "no-store",
+        connection: "keep-alive",
+        "x-accel-buffering": "no",
+      });
+      res.flushHeaders?.();
+      req.setTimeout?.(0);
+      res.setTimeout?.(0);
+
+      let closed = false;
+      const sendStatus = () => {
+        if (closed) return;
+        try {
+          res.write("event: status\ndata: " + JSON.stringify(board.snapshot()) + "\n\n");
+        } catch {
+          closed = true;
+        }
+      };
+      const unsubscribe = board.subscribe(sendStatus);
+      const ping = setInterval(() => {
+        if (!closed) res.write(": ping\n\n");
+      }, 15_000);
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        clearInterval(ping);
+        unsubscribe();
+      };
+      req.on("close", close);
+      res.on("error", close);
+      sendStatus();
+      return;
+    }
+
     if (method === "GET" && path === PREFIX + "/health") {
       send(res, 200, { ok: true, pid: process.pid, uptimeMs: Date.now() - startedAt, schemaVersion: 1 });
       return;

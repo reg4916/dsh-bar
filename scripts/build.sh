@@ -18,17 +18,17 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 if [ "$UNIVERSAL" = "1" ]; then
   mkdir -p "$OUT/arm64" "$OUT/x86_64"
   echo "compiling arm64..."
-  swiftc -O -whole-module-optimization -target arm64-apple-macos13.0 -framework Cocoa \
+  swiftc -O -whole-module-optimization -target arm64-apple-macos13.0 -framework Cocoa -framework Carbon \
       -o "$OUT/arm64/DSHBar" "$ROOT"/app/Sources/DSHBar/*.swift
   echo "compiling x86_64..."
-  swiftc -O -whole-module-optimization -target x86_64-apple-macos13.0 -framework Cocoa \
+  swiftc -O -whole-module-optimization -target x86_64-apple-macos13.0 -framework Cocoa -framework Carbon \
       -o "$OUT/x86_64/DSHBar" "$ROOT"/app/Sources/DSHBar/*.swift
   echo "lipo..."
   lipo -create "$OUT/arm64/DSHBar" "$OUT/x86_64/DSHBar" -output "$APP/Contents/MacOS/DSHBar"
 else
   ARCH="$(uname -m)"
   echo "compiling $ARCH..."
-  swiftc -O -whole-module-optimization -target "$ARCH-apple-macos13.0" -framework Cocoa \
+  swiftc -O -whole-module-optimization -target "$ARCH-apple-macos13.0" -framework Cocoa -framework Carbon \
       -o "$APP/Contents/MacOS/DSHBar" "$ROOT"/app/Sources/DSHBar/*.swift
 fi
 

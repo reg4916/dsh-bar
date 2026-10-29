@@ -5,6 +5,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let popover = NSPopover()
     private let client = BarClient()
     private let notifier = BarNotifier()
+    private let hotKey = GlobalHotKey()
+    private let stream = BarStream()
     private var settingsWindow: SettingsWindowController?
 
     private var frameTimer: Timer?
@@ -23,8 +25,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         notifier.onDenyApproval = { [weak self] id in self?.decide(id: id, outcome: "rejected") }
         notifier.onOpen = { [weak self] _ in self?.openActiveSession() }
         notifier.start()
+        hotKey.onPress = { [weak self] in self?.togglePopover() }
+        if Settings.shared.hotKeyEnabled { hotKey.register() }
         NotificationCenter.default.addObserver(forName: .dshBarSettingsChanged, object: nil, queue: .main) { [weak self] _ in
             guard let self else { return }
+            if Settings.shared.hotKeyEnabled {
+                self.hotKey.register()
+            } else {
+                self.hotKey.unregister()
+            }
             self.redraw(force: true)
             (self.popover.contentViewController as? StatusViewController)?.update(self.snapshot)
         }
@@ -44,7 +53,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             startDemoTimer()
         } else {
             startPolling()
+            startStreaming()
         }
+    }
+
+    private func startStreaming() {
+        stream.onStatus = { [weak self] status in
+            guard let self else { return }
+            self.apply(BarClient.snapshot(from: status), connected: true)
+        }
+        stream.onDisconnect = { [weak self] _ in
+            guard let self else { return }
+            self.stream.stop()
+            self.poll()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                guard let self, !self.demo else { return }
+                self.stream.start()
+            }
+        }
+        stream.start()
     }
 
     /// Static snapshot with a question, used to screenshot the composer.
@@ -336,6 +363,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showMenu()
             return
         }
+        togglePopover()
+    }
+
+    /// Shared by the status item click and the global hotkey.
+    private func togglePopover() {
         if popover.isShown {
             popover.performClose(nil)
         } else if let button = statusItem.button {

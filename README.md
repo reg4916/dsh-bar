@@ -37,6 +37,11 @@ New in **0.3**:
 - **status-dot mode** — show a small coloured dot instead of the whale (Settings);
 - smoother recovery after a display change: the popover re-runs its size pass.
 
+New in **0.4**:
+
+- **instant updates** over Server-Sent Events (`GET /dsh-bar/events`); the 0.8 s poll stays as a safety net and for reconnects;
+- **global hotkey ⌥⌘D** toggles the popover from any app (Settings can disable it).
+
 ## Download and install (free)
 
 ### Homebrew (recommended)
@@ -49,7 +54,7 @@ brew install --cask dsh-bar
 
 ### Manual
 
-Download `DSHBar-0.3.0-macos-universal.zip` from the [latest release](https://github.com/reg4916/dsh-bar/releases/latest), unzip into `/Applications`, and on first launch right-click → **Open** (or `xattr -dr com.apple.quarantine /Applications/DSHBar.app`). The bundle is **ad-hoc signed** — there is no paid Apple Developer ID, so no notarization.
+Download `DSHBar-0.4.0-macos-universal.zip` from the [latest release](https://github.com/reg4916/dsh-bar/releases/latest), unzip into `/Applications`, and on first launch right-click → **Open** (or `xattr -dr com.apple.quarantine /Applications/DSHBar.app`). The bundle is **ad-hoc signed** — there is no paid Apple Developer ID, so no notarization.
 
 ### Host plugin
 
@@ -109,7 +114,8 @@ Environment overrides: `DSH_BAR_RUNTIME_FILE`, `DSH_BAR_DEMO=1`, `DSH_BAR_AUTOAN
 - **0.1** — native shell, animated whale, live state ✅
 - **0.2** — questions, approvals queue, sessions, settings, locales, update check, tests ✅
 - **0.3** — scrollable popover, 8 sessions, status-dot mode ✅
-- **0.4** — SSE push instead of 0.8 s polling, global hotkey
+- **0.4** — SSE push, global hotkey ✅
+- **0.5** — session search, richer notification cards
 
 ## License
 

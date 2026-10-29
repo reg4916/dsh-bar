@@ -15,6 +15,39 @@ if CommandLine.arguments.contains("--notification-status") {
     exit(0)
 }
 
+// --stream-test: connect to /dsh-bar/events, print the first status, exit.
+if CommandLine.arguments.contains("--stream-test") {
+    let app = NSApplication.shared
+    app.setActivationPolicy(.accessory)
+    let stream = BarStream()
+    stream.onStatus = { status in
+        print("stream_state=" + (status.active?.state ?? "none"))
+        print("stream_rows=" + String(status.rows?.count ?? 0))
+        exit(0)
+    }
+    stream.onDisconnect = { error in
+        print("stream_error=" + String(describing: error))
+        exit(1)
+    }
+    stream.start()
+    DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+        print("stream_timeout")
+        exit(2)
+    }
+    app.run()
+}
+
+// --hotkey-test: register the global hotkey and report whether Carbon accepted it.
+if CommandLine.arguments.contains("--hotkey-test") {
+    let app = NSApplication.shared
+    app.setActivationPolicy(.accessory)
+    let hotKey = GlobalHotKey()
+    hotKey.register()
+    print("hotkey_registered=" + (hotKey.isRegistered ? "true" : "false"))
+    hotKey.unregister()
+    exit(0)
+}
+
 // --update-check: print the newer release tag, if any, and exit.
 if CommandLine.arguments.contains("--update-check") {
     let semaphore = DispatchSemaphore(value: 0)

@@ -16,6 +16,7 @@ Host half of [DSH Bar](https://github.com/reg4916/dsh-bar): exposes live DeepSee
 | Method + path | Auth | Purpose |
 |---|---|---|
 | `GET /dsh-bar/status` | Bearer | full state document |
+| `GET /dsh-bar/events` | Bearer | SSE stream: one `status` frame per fold change, 15 s ping |
 | `GET /dsh-bar/health` | Bearer | liveness without session data |
 | `POST /dsh-bar/approve` | Bearer | `{id, outcome: "allowed-once" \\| "rejected"}` |
 | `POST /dsh-bar/answer` | Bearer | `{id, answers}` |

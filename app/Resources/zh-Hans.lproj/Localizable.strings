@@ -55,3 +55,4 @@
 "settings.openNotifications" = "打开通知设置…";
 "action.stop" = "停止";
 "settings.dotOnly" = "仅显示状态圆点";
+"settings.hotkey" = "全局快捷键 ⌥⌘D";

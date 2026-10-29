@@ -181,3 +181,15 @@ test("stop cancels the running agent", () => {
   assert.equal(seen.options.keepInbox, true);
   assert.equal(board.stop("missing"), false);
 });
+
+test("subscribers fire on changes and can unsubscribe", () => {
+  const ctx = fakeCtx([session("s1")]);
+  const board = new Board(ctx, "srv");
+  let hits = 0;
+  const off = board.subscribe(() => { hits += 1; });
+  board.onSessionEvent(session("s1"), { type: "turn/start", data: {}, time: 1 });
+  assert.equal(hits, 1);
+  off();
+  board.touch();
+  assert.equal(hits, 1);
+});
