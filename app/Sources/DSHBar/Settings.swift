@@ -20,6 +20,11 @@ final class Settings {
         set { defaults.set(newValue, forKey: "showSessions") }
     }
 
+    var dotOnly: Bool {
+        get { defaults.object(forKey: "dotOnly") as? Bool ?? false }
+        set { defaults.set(newValue, forKey: "dotOnly") }
+    }
+
     /// System Reduce Motion wins over the app preference.
     var reduceMotion: Bool {
         NSWorkspace.shared.accessibilityDisplayShouldReduceMotion

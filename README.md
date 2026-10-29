@@ -30,6 +30,13 @@ New in **0.2**:
 - **en / ru / zh-Hans** (system language);
 - native tests (decode, answer batch, version compare) in CI.
 
+New in **0.3**:
+
+- long questions and long session lists **scroll** inside the popover instead of growing past the screen (capped at 640 pt);
+- up to **8 sessions** in the picker;
+- **status-dot mode** — show a small coloured dot instead of the whale (Settings);
+- smoother recovery after a display change: the popover re-runs its size pass.
+
 ## Download and install (free)
 
 ### Homebrew (recommended)
@@ -42,7 +49,7 @@ brew install --cask dsh-bar
 
 ### Manual
 
-Download `DSHBar-0.2.2-macos-universal.zip` from the [latest release](https://github.com/reg4916/dsh-bar/releases/latest), unzip into `/Applications`, and on first launch right-click → **Open** (or `xattr -dr com.apple.quarantine /Applications/DSHBar.app`). The bundle is **ad-hoc signed** — there is no paid Apple Developer ID, so no notarization.
+Download `DSHBar-0.3.0-macos-universal.zip` from the [latest release](https://github.com/reg4916/dsh-bar/releases/latest), unzip into `/Applications`, and on first launch right-click → **Open** (or `xattr -dr com.apple.quarantine /Applications/DSHBar.app`). The bundle is **ad-hoc signed** — there is no paid Apple Developer ID, so no notarization.
 
 ### Host plugin
 
@@ -101,7 +108,8 @@ Environment overrides: `DSH_BAR_RUNTIME_FILE`, `DSH_BAR_DEMO=1`, `DSH_BAR_AUTOAN
 
 - **0.1** — native shell, animated whale, live state ✅
 - **0.2** — questions, approvals queue, sessions, settings, locales, update check, tests ✅
-- **0.3** — SSE push instead of 0.8 s polling, session history, more menu bar styles
+- **0.3** — scrollable popover, 8 sessions, status-dot mode ✅
+- **0.4** — SSE push instead of 0.8 s polling, global hotkey
 
 ## License
 

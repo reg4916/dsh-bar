@@ -49,6 +49,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Static snapshot with a question, used to screenshot the composer.
     private func showQuestionPreview() {
+        let long = ProcessInfo.processInfo.environment["DSH_BAR_DEMO_LONG"] == "1"
+        var options = [
+            BarOption(label: "Recursive descent", description: "simpler"),
+            BarOption(label: "PEG", description: "more flexible"),
+        ]
+        if long {
+            options += (3...8).map { BarOption(label: "Strategy \($0)", description: nil) }
+        }
+        var sessions = [
+            BarSession(id: "s1", title: "Refactor the parser", state: .thinking, busy: true, waiting: false),
+            BarSession(id: "s2", title: "Plugin docs", state: .idle, busy: false, waiting: false),
+        ]
+        if long {
+            sessions = (0..<8).map { index in
+                BarSession(id: "s\(index)", title: "Session \(index) — longer title", state: .idle, busy: false, waiting: false)
+            }
+        }
         var preview = BarSnapshot()
         preview.state = .thinking
         preview.title = "Refactor the parser"
@@ -65,18 +82,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 question: "Which parser should we keep?",
                 detail: "Both strategies parse the same grammar.",
                 header: "Parser choice",
-                options: [
-                    BarOption(label: "Recursive descent", description: "simpler"),
-                    BarOption(label: "PEG", description: "more flexible"),
-                ],
+                options: options,
                 multiSelect: false
             )]
         )]
         preview.questionCount = 1
-        preview.sessions = [
-            BarSession(id: "s1", title: "Refactor the parser", state: .thinking, busy: true, waiting: false),
-            BarSession(id: "s2", title: "Plugin docs", state: .idle, busy: false, waiting: false),
-        ]
+        preview.sessions = sessions
         apply(preview, connected: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
             guard let self, let button = self.statusItem.button else { return }
@@ -203,6 +214,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func redraw(force: Bool) {
         guard let button = statusItem.button else { return }
+        if Settings.shared.dotOnly {
+            if force || frame % 12 == 0 {
+                button.image = WhaleIcon.dot(state: snapshot.state)
+            }
+            return
+        }
         let animated = snapshot.state.animates && Settings.shared.animates
         if animated || force || frame % 12 == 0 {
             button.image = WhaleIcon.image(frame: frame, state: snapshot.state)
@@ -370,6 +387,9 @@ final class StatusViewController: NSViewController {
     private var optionButtons: [[NSButton]] = []
     private var customFields: [NSTextField] = []
     private var sendButton: NSButton?
+    private let scrollView = NSScrollView()
+    private let documentView = FlippedView()
+    private var documentHeight: NSLayoutConstraint?
 
     init(snapshot: BarSnapshot,
          onApprove: @escaping (String) -> Void,
@@ -393,23 +413,39 @@ final class StatusViewController: NSViewController {
     required init?(coder: NSCoder) { nil }
 
     override func loadView() {
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 320))
         // NSPopover uses a vibrant material that lets the window behind bleed
         // through; paint the content solid so text stays readable.
         container.wantsLayer = true
         container.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        container.addSubview(scrollView)
+
+        documentView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.documentView = documentView
+
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
         stack.edgeInsets = NSEdgeInsets(top: 14, left: 14, bottom: 14, right: 14)
         stack.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(stack)
+        documentView.addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: container.topAnchor),
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            scrollView.topAnchor.constraint(equalTo: container.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             container.widthAnchor.constraint(equalToConstant: 320),
+            documentView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
+            stack.topAnchor.constraint(equalTo: documentView.topAnchor),
+            stack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: documentView.trailingAnchor),
+            stack.bottomAnchor.constraint(equalTo: documentView.bottomAnchor),
         ])
         view = container
         render()
@@ -424,9 +460,17 @@ final class StatusViewController: NSViewController {
     }
 
     /// NSPopover otherwise keeps its initial frame and clips the last row.
+    /// Long questions/session lists scroll inside a capped height instead of
+    /// growing past the screen.
     private func updatePreferredSize() {
         view.layoutSubtreeIfNeeded()
-        preferredContentSize = NSSize(width: 320, height: max(140, stack.fittingSize.height))
+        let content = max(1, stack.fittingSize.height)
+        documentHeight?.isActive = false
+        documentHeight = documentView.heightAnchor.constraint(equalToConstant: content)
+        documentHeight?.isActive = true
+        let height = min(max(140, content), 640)
+        scrollView.hasVerticalScroller = content > 640
+        preferredContentSize = NSSize(width: 320, height: height)
     }
 
     private func label(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = .labelColor) -> NSTextField {
@@ -456,7 +500,7 @@ final class StatusViewController: NSViewController {
 
         if Settings.shared.showSessions && snapshot.sessions.count > 1 {
             stack.addArrangedSubview(label(L("sessions.header"), size: 10, weight: .semibold, color: .secondaryLabelColor))
-            for session in snapshot.sessions.prefix(4) {
+            for session in snapshot.sessions.prefix(8) {
                 let row = NSButton(title: session.state.label + " — " + session.title,
                                    target: self, action: #selector(sessionTapped(_:)))
                 row.isBordered = false

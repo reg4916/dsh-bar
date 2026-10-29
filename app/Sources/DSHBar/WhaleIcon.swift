@@ -60,4 +60,23 @@ enum WhaleIcon {
         NSBezierPath(ovalIn: NSRect(x: 13.6, y: 10.6 + bob, width: 2.1, height: 2.1)).fill()
         NSGraphicsContext.restoreGraphicsState()
     }
+
+    /// Minimal status dot for the "dot only" menu bar mode.
+    static func dot(state: BarState) -> NSImage {
+        let color: NSColor
+        switch state {
+        case .thinking, .tool: color = .systemBlue
+        case .approval: color = .systemOrange
+        case .done: color = .systemGreen
+        case .error: color = .systemRed
+        case .idle: color = .secondaryLabelColor
+        }
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
+            color.setFill()
+            NSBezierPath(ovalIn: NSRect(x: 5, y: 5, width: 8, height: 8)).fill()
+            return true
+        }
+        image.isTemplate = false
+        return image
+    }
 }

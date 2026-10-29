@@ -45,6 +45,7 @@ final class SettingsViewController: NSViewController {
             stack.addArrangedSubview(open)
         }
         stack.addArrangedSubview(check(L("settings.animate"), Settings.shared.animateIcon, #selector(toggleAnimate)))
+        stack.addArrangedSubview(check(L("settings.dotOnly"), Settings.shared.dotOnly, #selector(toggleDotOnly)))
         stack.addArrangedSubview(check(L("settings.sessions"), Settings.shared.showSessions, #selector(toggleSessions)))
         stack.addArrangedSubview(hint(L("settings.reduceMotionHint")))
         stack.addArrangedSubview(separator())
@@ -109,6 +110,11 @@ final class SettingsViewController: NSViewController {
 
     @objc private func toggleAnimate(_ sender: NSButton) {
         Settings.shared.animateIcon = sender.state == .on
+        changed()
+    }
+
+    @objc private func toggleDotOnly(_ sender: NSButton) {
+        Settings.shared.dotOnly = sender.state == .on
         changed()
     }
 

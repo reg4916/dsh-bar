@@ -54,3 +54,4 @@
 "settings.notificationsUnavailable" = "macOS does not allow notifications for unsigned builds; the bar shows a floating card instead.";
 "settings.openNotifications" = "Open Notification Settings…";
 "action.stop" = "Stop";
+"settings.dotOnly" = "Show a status dot only";
