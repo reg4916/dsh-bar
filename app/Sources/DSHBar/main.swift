@@ -1,5 +1,6 @@
 import AppKit
 import UserNotifications
+import Darwin
 
 // --notification-status: print the current authorization without prompting.
 if CommandLine.arguments.contains("--notification-status") {
@@ -62,6 +63,15 @@ if CommandLine.arguments.contains("--dump-status") {
         semaphore.signal()
     }
     _ = semaphore.wait(timeout: .now() + 12)
+    exit(0)
+}
+
+// Single instance: a second DSH Bar (even launched from a different path)
+// must not add a second whale. flock is released when the process exits.
+let lockDirectory = NSHomeDirectory() + "/.dsh/dsh-bar"
+try? FileManager.default.createDirectory(atPath: lockDirectory, withIntermediateDirectories: true)
+let lockFD = open(lockDirectory + "/app.lock", O_CREAT | O_RDWR, 0o600)
+if lockFD >= 0 && flock(lockFD, LOCK_EX | LOCK_NB) != 0 {
     exit(0)
 }
 

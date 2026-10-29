@@ -1,6 +1,6 @@
 {
   "name": "dsh-bar",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Host half of DSH Bar: exposes live DeepSeek Harness session state to the macOS menu bar app over loopback HTTP.",
   "license": "MIT",
   "author": "reg4916",

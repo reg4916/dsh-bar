@@ -42,7 +42,7 @@ brew install --cask dsh-bar
 
 ### Manual
 
-Download `DSHBar-0.2.1-macos-universal.zip` from the [latest release](https://github.com/reg4916/dsh-bar/releases/latest), unzip into `/Applications`, and on first launch right-click → **Open** (or `xattr -dr com.apple.quarantine /Applications/DSHBar.app`). The bundle is **ad-hoc signed** — there is no paid Apple Developer ID, so no notarization.
+Download `DSHBar-0.2.2-macos-universal.zip` from the [latest release](https://github.com/reg4916/dsh-bar/releases/latest), unzip into `/Applications`, and on first launch right-click → **Open** (or `xattr -dr com.apple.quarantine /Applications/DSHBar.app`). The bundle is **ad-hoc signed** — there is no paid Apple Developer ID, so no notarization.
 
 ### Host plugin
 
