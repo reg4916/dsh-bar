@@ -34,6 +34,11 @@ fi
 
 cp "$ROOT/app/Resources/Info.plist" "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
+for lproj in "$ROOT"/app/Resources/*.lproj; do
+  if [ -d "$lproj" ]; then
+    cp -R "$lproj" "$APP/Contents/Resources/"
+  fi
+done
 
 codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || true
 

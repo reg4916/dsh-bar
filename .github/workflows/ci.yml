@@ -32,6 +32,8 @@ jobs:
         run: |
           lipo -info build/DSHBar.app/Contents/MacOS/DSHBar
           codesign -dv build/DSHBar.app 2>&1 | head -5
+      - name: Native tests
+        run: ./scripts/test-native.sh
       - uses: actions/upload-artifact@v4
         with:
           name: DSHBar-universal

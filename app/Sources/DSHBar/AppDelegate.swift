@@ -4,6 +4,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let popover = NSPopover()
     private let client = BarClient()
+    private let notifier = BarNotifier()
+    private var settingsWindow: SettingsWindowController?
 
     private var frameTimer: Timer?
     private var pollTimer: Timer?
@@ -17,6 +19,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         demo = ProcessInfo.processInfo.environment["DSH_BAR_DEMO"] == "1"
+        notifier.onDenyApproval = { [weak self] id in self?.decide(id: id, outcome: "rejected") }
+        notifier.onOpen = { [weak self] _ in self?.openActiveSession() }
+        notifier.start()
+        NotificationCenter.default.addObserver(forName: .dshBarSettingsChanged, object: nil, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            self.redraw(force: true)
+            (self.popover.contentViewController as? StatusViewController)?.update(self.snapshot)
+        }
         configureStatusItem()
         configurePopover()
         startFrameTimer()
@@ -53,7 +63,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             onOpen: { [weak self] in self?.openActiveSession() },
             onStop: { [weak self] in self?.stopActive() },
             onQuit: { NSApplication.shared.terminate(nil) },
-            onAnswer: { [weak self] heldId, answers in self?.sendAnswer(heldId: heldId, answers: answers) }
+            onAnswer: { [weak self] heldId, answers in self?.sendAnswer(heldId: heldId, answers: answers) },
+            onFocus: { [weak self] sessionId in self?.focus(sessionId: sessionId) }
         )
     }
 
@@ -98,7 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.apply(next, connected: true)
                 case .failure(let error):
                     var offline = BarSnapshot()
-                    offline.title = "DSH is not running"
+                    offline.title = L("status.offline")
                     offline.detail = String(describing: error)
                     self.apply(offline, connected: false)
                 }
@@ -116,6 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             || next.activeSessionId != snapshot.activeSessionId
         self.connected = connected
         snapshot = next
+        notifier.sync(next, enabled: Settings.shared.notificationsEnabled)
         if changed {
             (popover.contentViewController as? StatusViewController)?.update(snapshot)
         }
@@ -131,7 +143,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func redraw(force: Bool) {
         guard let button = statusItem.button else { return }
-        if snapshot.state.animates || force || frame % 12 == 0 {
+        let animated = snapshot.state.animates && Settings.shared.animates
+        if animated || force || frame % 12 == 0 {
             button.image = WhaleIcon.image(frame: frame, state: snapshot.state)
         }
     }
@@ -173,7 +186,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func openActiveSession() {
-        guard connected, let sessionId = snapshot.activeSessionId else {
+        focus(sessionId: snapshot.activeSessionId)
+    }
+
+    private func focus(sessionId: String?) {
+        guard connected, let sessionId else {
             activateDSH()
             return
         }
@@ -198,31 +215,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Launch at login (LaunchAgent, works without a paid Developer ID)
 
-    private var launchAgentPath: String {
-        NSHomeDirectory() + "/Library/LaunchAgents/com.reg4916.dsh-bar.plist"
-    }
-
     private var launchAtLoginEnabled: Bool {
-        FileManager.default.fileExists(atPath: launchAgentPath)
+        LaunchAgent.enabled
     }
 
     @objc private func toggleLaunchAtLogin() {
-        if launchAtLoginEnabled {
-            try? FileManager.default.removeItem(atPath: launchAgentPath)
-        } else {
-            let directory = NSHomeDirectory() + "/Library/LaunchAgents"
-            try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
-            let executable = Bundle.main.executablePath ?? CommandLine.arguments[0]
-            let plist: [String: Any] = [
-                "Label": "com.reg4916.dsh-bar",
-                "ProgramArguments": [executable],
-                "RunAtLoad": true,
-                "KeepAlive": false,
-                "ProcessType": "Background",
-            ]
-            if let data = try? PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0) {
-                try? data.write(to: URL(fileURLWithPath: launchAgentPath))
+        LaunchAgent.setEnabled(!LaunchAgent.enabled)
+    }
+
+    @objc private func openSettings() {
+        if settingsWindow == nil {
+            settingsWindow = SettingsWindowController()
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        settingsWindow?.showWindow(nil)
+        settingsWindow?.window?.makeKeyAndOrderFront(nil)
+    }
+
+    @objc private func checkForUpdates() {
+        UpdateChecker.check { [weak self] tag in
+            let alert = NSAlert()
+            if let tag {
+                alert.messageText = Lf("update.available.title", tag)
+                alert.informativeText = L("update.available.body")
+                alert.addButton(withTitle: L("action.open"))
+                alert.addButton(withTitle: L("action.later"))
+                if alert.runModal() == .alertFirstButtonReturn {
+                    NSWorkspace.shared.open(UpdateChecker.releasesURL)
+                }
+            } else {
+                alert.messageText = L("update.none.title")
+                alert.informativeText = Lf("update.none.body", UpdateChecker.currentVersion)
+                alert.addButton(withTitle: L("action.ok"))
+                alert.runModal()
             }
+            _ = self
         }
     }
 
@@ -242,17 +269,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showMenu() {
         let menu = NSMenu()
-        menu.addItem(withTitle: "Open DSH", action: #selector(menuOpen), keyEquivalent: "o").target = self
+        menu.addItem(withTitle: L("menu.open"), action: #selector(menuOpen), keyEquivalent: "o").target = self
         if snapshot.busy {
-            menu.addItem(withTitle: "Stop Current Turn", action: #selector(menuStop), keyEquivalent: "").target = self
+            menu.addItem(withTitle: L("menu.stop"), action: #selector(menuStop), keyEquivalent: "").target = self
         }
         menu.addItem(.separator())
-        let login = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
+        menu.addItem(withTitle: L("menu.settings"), action: #selector(openSettings), keyEquivalent: ",").target = self
+        menu.addItem(withTitle: L("menu.checkUpdates"), action: #selector(checkForUpdates), keyEquivalent: "").target = self
+        menu.addItem(.separator())
+        let login = NSMenuItem(title: L("menu.launchAtLogin"), action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
         login.target = self
         login.state = launchAtLoginEnabled ? .on : .off
         menu.addItem(login)
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit DSH Bar", action: #selector(menuQuit), keyEquivalent: "q").target = self
+        menu.addItem(withTitle: L("menu.quit"), action: #selector(menuQuit), keyEquivalent: "q").target = self
         statusItem.menu = menu
         statusItem.button?.performClick(nil)
         statusItem.menu = nil
@@ -275,6 +305,7 @@ final class StatusViewController: NSViewController {
     private let onStop: () -> Void
     private let onQuit: () -> Void
     private let onAnswer: (String, [[String: Any]]) -> Void
+    private let onFocus: (String) -> Void
     private var approvalIndex = 0
     private var optionButtons: [[NSButton]] = []
     private var customFields: [NSTextField] = []
@@ -285,7 +316,8 @@ final class StatusViewController: NSViewController {
          onOpen: @escaping () -> Void,
          onStop: @escaping () -> Void,
          onQuit: @escaping () -> Void,
-         onAnswer: @escaping (String, [[String: Any]]) -> Void) {
+         onAnswer: @escaping (String, [[String: Any]]) -> Void,
+         onFocus: @escaping (String) -> Void) {
         self.snapshot = snapshot
         self.onApprove = onApprove
         self.onDeny = onDeny
@@ -293,6 +325,7 @@ final class StatusViewController: NSViewController {
         self.onStop = onStop
         self.onQuit = onQuit
         self.onAnswer = onAnswer
+        self.onFocus = onFocus
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -346,7 +379,22 @@ final class StatusViewController: NSViewController {
             stack.addArrangedSubview(label(snapshot.detail, size: 11, color: .secondaryLabelColor))
         }
         let tokens = NumberFormatter.localizedString(from: NSNumber(value: snapshot.tokens), number: .decimal)
-        stack.addArrangedSubview(label("\(snapshot.state.label) · \(snapshot.model) · \(tokens) tok", size: 10, color: .tertiaryLabelColor))
+        stack.addArrangedSubview(label(Lf("status.meta", snapshot.state.label, snapshot.model, tokens), size: 10, color: .tertiaryLabelColor))
+
+        if Settings.shared.showSessions && snapshot.sessions.count > 1 {
+            stack.addArrangedSubview(label(L("sessions.header"), size: 10, weight: .semibold, color: .secondaryLabelColor))
+            for session in snapshot.sessions.prefix(4) {
+                let row = NSButton(title: session.state.label + " — " + session.title,
+                                   target: self, action: #selector(sessionTapped(_:)))
+                row.isBordered = false
+                row.alignment = .left
+                row.font = .systemFont(ofSize: 11)
+                row.contentTintColor = session.id == snapshot.activeSessionId ? .labelColor : .secondaryLabelColor
+                row.identifier = NSUserInterfaceItemIdentifier(session.id)
+                row.widthAnchor.constraint(equalToConstant: 292).isActive = true
+                stack.addArrangedSubview(row)
+            }
+        }
 
         if let group = snapshot.questionGroups.first {
             renderQuestion(group)
@@ -356,13 +404,13 @@ final class StatusViewController: NSViewController {
             renderApproval()
         }
 
-        let actions = NSStackView(views: [button("Open DSH", action: #selector(openTapped))])
+        let actions = NSStackView(views: [button(L("action.open"), action: #selector(openTapped))])
         actions.orientation = .horizontal
         actions.spacing = 8
         if snapshot.busy {
-            actions.addArrangedSubview(button("Stop", action: #selector(stopTapped)))
+            actions.addArrangedSubview(button(L("menu.stop"), action: #selector(stopTapped)))
         }
-        actions.addArrangedSubview(button("Quit", action: #selector(quitTapped)))
+        actions.addArrangedSubview(button(L("menu.quit"), action: #selector(quitTapped)))
         stack.addArrangedSubview(actions)
     }
 
@@ -401,33 +449,26 @@ final class StatusViewController: NSViewController {
             optionButtons.append(buttons)
 
             let custom = NSTextField()
-            custom.placeholderString = "Or type your own…"
+            custom.placeholderString = L("question.custom")
             custom.font = .systemFont(ofSize: 11)
             custom.widthAnchor.constraint(equalToConstant: 280).isActive = true
             stack.addArrangedSubview(custom)
             customFields.append(custom)
         }
-        stack.addArrangedSubview(button("Send answer", action: #selector(sendAnswerTapped)))
+        stack.addArrangedSubview(button(L("question.send"), action: #selector(sendAnswerTapped)))
     }
 
     @objc private func sendAnswerTapped() {
         guard let group = snapshot.questionGroups.first else { return }
-        var answers: [[String: Any]] = []
-        for (index, question) in group.questions.enumerated() {
-            let selected = index < optionButtons.count
-                ? optionButtons[index].filter { $0.state == .on }.map { $0.title }
-                : []
-            let custom = index < customFields.count
-                ? customFields[index].stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                : ""
-            // DSH rule: a custom answer replaces the selection for single-select,
-            // while multi-select keeps its labels next to the custom text.
-            let effective = (question.multiSelect == true || custom.isEmpty) ? selected : []
-            var answer: [String: Any] = ["id": question.id, "selected": effective]
-            if !custom.isEmpty { answer["custom"] = custom }
-            answers.append(answer)
+        let choices = group.questions.enumerated().map { index, _ in
+            AnswerBatch.Choice(
+                selected: index < optionButtons.count
+                    ? optionButtons[index].filter { $0.state == .on }.map { $0.title }
+                    : [],
+                custom: index < customFields.count ? customFields[index].stringValue : ""
+            )
         }
-        onAnswer(group.id, answers)
+        onAnswer(group.id, AnswerBatch.build(group, choices: choices))
     }
 
     // MARK: - Approvals
@@ -436,18 +477,18 @@ final class StatusViewController: NSViewController {
         let items = snapshot.approvalItems
         approvalIndex = min(max(0, approvalIndex), items.count - 1)
         let approval = items[approvalIndex]
-        let suffix = items.count > 1 ? " (\(approvalIndex + 1)/\(items.count))" : ""
+        let suffix = items.count > 1 ? " " + Lf("approval.count", approvalIndex + 1, items.count) : ""
         let reason = approval.reason.map { " — " + $0 } ?? ""
-        stack.addArrangedSubview(label("Approval" + suffix + ": " + approval.toolName + reason, size: 11, color: .systemOrange))
+        stack.addArrangedSubview(label(L("approval.label") + suffix + ": " + approval.toolName + reason, size: 11, color: .systemOrange))
         let row = NSStackView(views: [
-            button("Approve", action: #selector(approveTapped)),
-            button("Deny", action: #selector(denyTapped)),
+            button(L("action.approve"), action: #selector(approveTapped)),
+            button(L("action.deny"), action: #selector(denyTapped)),
         ])
         row.orientation = .horizontal
         row.spacing = 8
         if items.count > 1 {
-            row.addArrangedSubview(button("Previous", action: #selector(previousApproval)))
-            row.addArrangedSubview(button("Next", action: #selector(nextApproval)))
+            row.addArrangedSubview(button(L("action.previous"), action: #selector(previousApproval)))
+            row.addArrangedSubview(button(L("action.next"), action: #selector(nextApproval)))
         }
         stack.addArrangedSubview(row)
     }
@@ -470,6 +511,11 @@ final class StatusViewController: NSViewController {
     @objc private func denyTapped() {
         guard approvalIndex < snapshot.approvalItems.count else { return }
         onDeny(snapshot.approvalItems[approvalIndex].id)
+    }
+
+    @objc private func sessionTapped(_ sender: NSButton) {
+        guard let id = sender.identifier?.rawValue else { return }
+        onFocus(id)
     }
 
     @objc private func openTapped() { onOpen() }

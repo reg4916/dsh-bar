@@ -11,12 +11,12 @@ enum BarState: String, CaseIterable {
 
     var label: String {
         switch self {
-        case .idle: return "Idle"
-        case .thinking: return "Thinking"
-        case .tool: return "Running a tool"
-        case .approval: return "Waiting for approval"
-        case .done: return "Done"
-        case .error: return "Error"
+        case .idle: return L("state.idle")
+        case .thinking: return L("state.thinking")
+        case .tool: return L("state.tool")
+        case .approval: return L("state.approval")
+        case .done: return L("state.done")
+        case .error: return L("state.error")
         }
     }
 
@@ -70,8 +70,8 @@ struct BarSession: Identifiable {
 /// Snapshot of what the menu bar shows.
 struct BarSnapshot {
     var state: BarState = .idle
-    var title: String = "No active session"
-    var detail: String = "Start a conversation in DSH"
+    var title: String = L("status.none")
+    var detail: String = L("status.start")
     var model: String = ""
     var tokens: Int = 0
     var cost: String = "—"

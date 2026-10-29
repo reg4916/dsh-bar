@@ -67,11 +67,11 @@ enum ClientError: Error, CustomStringConvertible {
 
     var description: String {
         switch self {
-        case .noRuntime: return "DSH runtime not found"
-        case .hostGone: return "DSH is not running"
-        case .badRuntime: return "DSH runtime file is invalid"
-        case .forbidden: return "DSH rejected the token"
-        case .notPending: return "already settled"
+        case .noRuntime: return L("error.noRuntime")
+        case .hostGone: return L("error.hostGone")
+        case .badRuntime: return L("error.badRuntime")
+        case .forbidden: return L("error.forbidden")
+        case .notPending: return L("error.notPending")
         case .network(let message): return "network: " + message
         case .decode(let message): return "decode: " + message
         }
@@ -212,7 +212,7 @@ final class BarClient {
         let sessions = (status.rows ?? []).map {
             BarSession(
                 id: $0.id,
-                title: $0.title ?? "Session",
+                title: $0.title ?? L("status.none"),
                 state: BarState(rawValue: $0.state ?? "idle") ?? .idle,
                 busy: $0.busy ?? false,
                 waiting: $0.approval != nil || $0.ask != nil
@@ -220,7 +220,7 @@ final class BarClient {
         }
         return BarSnapshot(
             state: state,
-            title: active?.title ?? "No active session",
+            title: active?.title ?? L("status.none"),
             detail: active?.detail ?? "",
             model: active?.model ?? "",
             tokens: active?.tokens ?? 0,
