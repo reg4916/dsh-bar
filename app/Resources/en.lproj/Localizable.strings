@@ -50,3 +50,6 @@
 "error.badRuntime" = "DSH runtime file is invalid";
 "error.forbidden" = "DSH rejected the token";
 "error.notPending" = "Already settled";
+"action.dismiss" = "Dismiss";
+"settings.notificationsUnavailable" = "macOS does not allow notifications for unsigned builds; the bar shows a floating card instead.";
+"settings.openNotifications" = "Open Notification Settings…";

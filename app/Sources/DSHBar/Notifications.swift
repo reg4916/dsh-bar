@@ -8,6 +8,7 @@ final class BarNotifier: NSObject, UNUserNotificationCenterDelegate {
     var onDenyApproval: ((String) -> Void)?
     var onOpen: ((String?) -> Void)?
 
+    private let alerts = AlertPresenter()
     private var notifiedApprovals = Set<String>()
     private var notifiedQuestions = Set<String>()
     private var lastState: BarState = .idle
@@ -15,11 +16,26 @@ final class BarNotifier: NSObject, UNUserNotificationCenterDelegate {
     private var ready = false
 
     func start() {
+        alerts.onOpen = { [weak self] in self?.onOpen?(nil) }
+        alerts.onDeny = { [weak self] id in self?.onDenyApproval?(id) }
         let center = UNUserNotificationCenter.current()
         center.delegate = self
         center.setNotificationCategories(categories())
-        center.requestAuthorization(options: [.alert, .sound]) { [weak self] granted, _ in
-            DispatchQueue.main.async { self?.ready = granted }
+        // A background-only (LSUIElement) app cannot present the system prompt
+        // before it has an active run loop; without this the request is denied
+        // immediately with "Notifications are not allowed for this application".
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            NSApp.activate(ignoringOtherApps: true)
+            center.requestAuthorization(options: [.alert, .sound]) { granted, error in
+            center.getNotificationSettings { settings in
+                DispatchQueue.main.async {
+                    self?.ready = granted
+                    UserDefaults.standard.set(granted, forKey: "notifGranted")
+                    UserDefaults.standard.set(settings.authorizationStatus.rawValue, forKey: "notifStatus")
+                    UserDefaults.standard.set(error?.localizedDescription ?? "", forKey: "notifError")
+                }
+            }
+            }
         }
     }
 
@@ -44,27 +60,43 @@ final class BarNotifier: NSObject, UNUserNotificationCenterDelegate {
         for approval in snapshot.approvalItems where !notifiedApprovals.contains(approval.id) {
             notifiedApprovals.insert(approval.id)
             let body = approval.reason ?? snapshot.title
-            post(title: Lf("notify.approval.title", approval.toolName), body: body,
-                 category: "approval",
-                 info: ["approvalId": approval.id, "sessionId": snapshot.activeSessionId ?? ""],
-                 id: "approval-" + approval.id)
+            if ready {
+                post(title: Lf("notify.approval.title", approval.toolName), body: body,
+                     category: "approval",
+                     info: ["approvalId": approval.id, "sessionId": snapshot.activeSessionId ?? ""],
+                     id: "approval-" + approval.id)
+            } else {
+                alerts.approval(id: approval.id, tool: approval.toolName, reason: approval.reason)
+            }
         }
         for group in snapshot.questionGroups where !notifiedQuestions.contains(group.id) {
             notifiedQuestions.insert(group.id)
             let text = group.questions.first?.question ?? snapshot.title
-            post(title: Lf("notify.question.title", group.title ?? snapshot.title), body: text,
-                 category: "question",
-                 info: ["sessionId": group.sessionId ?? snapshot.activeSessionId ?? ""],
-                 id: "question-" + group.id)
+            if ready {
+                post(title: Lf("notify.question.title", group.title ?? snapshot.title), body: text,
+                     category: "question",
+                     info: ["sessionId": group.sessionId ?? snapshot.activeSessionId ?? ""],
+                     id: "question-" + group.id)
+            } else {
+                alerts.question(title: group.title ?? snapshot.title, text: text)
+            }
         }
         if snapshot.state == .done && lastState != .done {
-            post(title: L("notify.done.title"), body: snapshot.title, category: "none",
-                 info: ["sessionId": snapshot.activeSessionId ?? ""], id: "done-" + UUID().uuidString)
+            if ready {
+                post(title: L("notify.done.title"), body: snapshot.title, category: "none",
+                     info: ["sessionId": snapshot.activeSessionId ?? ""], id: "done-" + UUID().uuidString)
+            } else {
+                alerts.done(title: snapshot.title)
+            }
         }
         if snapshot.state == .error && lastState != .error {
-            post(title: L("notify.error.title"), body: snapshot.detail.isEmpty ? snapshot.title : snapshot.detail,
-                 category: "none",
-                 info: ["sessionId": snapshot.activeSessionId ?? ""], id: "error-" + UUID().uuidString)
+            let body = snapshot.detail.isEmpty ? snapshot.title : snapshot.detail
+            if ready {
+                post(title: L("notify.error.title"), body: body, category: "none",
+                     info: ["sessionId": snapshot.activeSessionId ?? ""], id: "error-" + UUID().uuidString)
+            } else {
+                alerts.error(body)
+            }
         }
         lastState = snapshot.state
         lastSession = snapshot.activeSessionId

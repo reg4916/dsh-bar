@@ -50,3 +50,6 @@
 "error.badRuntime" = "DSH 运行时文件无效";
 "error.forbidden" = "DSH 拒绝了令牌";
 "error.notPending" = "已处理";
+"action.dismiss" = "关闭";
+"settings.notificationsUnavailable" = "macOS 不允许未签名的应用发送通知；DSH Bar 会改为显示浮动卡片。";
+"settings.openNotifications" = "打开通知设置…";

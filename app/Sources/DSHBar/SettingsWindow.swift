@@ -36,6 +36,14 @@ final class SettingsViewController: NSViewController {
 
         stack.addArrangedSubview(title(L("settings.title"), size: 15, weight: .semibold))
         stack.addArrangedSubview(check(L("settings.notifications"), Settings.shared.notificationsEnabled, #selector(toggleNotifications)))
+        let status = UserDefaults.standard.object(forKey: "notifStatus") as? Int
+        if status != 2 {
+            stack.addArrangedSubview(hint(L("settings.notificationsUnavailable")))
+            let open = NSButton(title: L("settings.openNotifications"), target: self, action: #selector(openNotificationSettings))
+            open.bezelStyle = .rounded
+            open.controlSize = .small
+            stack.addArrangedSubview(open)
+        }
         stack.addArrangedSubview(check(L("settings.animate"), Settings.shared.animateIcon, #selector(toggleAnimate)))
         stack.addArrangedSubview(check(L("settings.sessions"), Settings.shared.showSessions, #selector(toggleSessions)))
         stack.addArrangedSubview(hint(L("settings.reduceMotionHint")))
@@ -112,6 +120,16 @@ final class SettingsViewController: NSViewController {
     @objc private func toggleLaunch(_ sender: NSButton) {
         LaunchAgent.setEnabled(sender.state == .on)
         changed()
+    }
+
+    @objc private func openNotificationSettings() {
+        let candidates = [
+            "x-apple.systempreferences:com.apple.Notifications-Settings.extension",
+            "x-apple.systempreferences:com.apple.preference.notifications",
+        ]
+        for raw in candidates {
+            if let url = URL(string: raw), NSWorkspace.shared.open(url) { return }
+        }
     }
 
     @objc private func checkUpdates() {

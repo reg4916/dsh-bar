@@ -50,3 +50,6 @@
 "error.badRuntime" = "Файл runtime DSH повреждён";
 "error.forbidden" = "DSH отклонил токен";
 "error.notPending" = "Уже обработано";
+"action.dismiss" = "Скрыть";
+"settings.notificationsUnavailable" = "macOS не разрешает уведомления для сборок без Apple-сертификата; вместо них показывается карточка поверх экрана.";
+"settings.openNotifications" = "Открыть настройки уведомлений…";

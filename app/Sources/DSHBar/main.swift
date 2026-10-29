@@ -1,4 +1,30 @@
 import AppKit
+import UserNotifications
+
+// --notification-status: print the current authorization without prompting.
+if CommandLine.arguments.contains("--notification-status") {
+    let semaphore = DispatchSemaphore(value: 0)
+    UNUserNotificationCenter.current().getNotificationSettings { settings in
+        print("authorization=\(settings.authorizationStatus.rawValue)")
+        print("alert=\(settings.alertSetting.rawValue)")
+        print("sound=\(settings.soundSetting.rawValue)")
+        semaphore.signal()
+    }
+    _ = semaphore.wait(timeout: .now() + 5)
+    exit(0)
+}
+
+// --alert-test: show the in-app fallback card for a few seconds and exit.
+if CommandLine.arguments.contains("--alert-test") {
+    let app = NSApplication.shared
+    app.setActivationPolicy(.accessory)
+    let presenter = AlertPresenter()
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        presenter.approval(id: "demo", tool: "bash", reason: "write src/parser.ts")
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 4) { exit(0) }
+    app.run()
+}
 
 // --dump-status: print one status snapshot and exit. Useful for debugging the
 // bridge without opening the menu bar.
