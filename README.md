@@ -36,6 +36,7 @@ New in **0.2.0**:
 
 ```bash
 brew tap reg4916/dsh-bar
+brew trust reg4916/dsh-bar
 brew install --cask dsh-bar
 ```
 
